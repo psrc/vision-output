@@ -1,0 +1,846 @@
+---
+title: "VISION 2050 Scenario Outputs"
+output:
+  html_document: default
+---
+
+```{r initial_setup, include = FALSE}
+library(data.table)
+library(readxl)
+library(DT)
+
+# Input Files
+summary_file_date <- "2019-04-17"
+housing_type <- "17_housing_type_mix"
+job_pop_tod <- "30_jobs_pop_tod_areas"
+job_housing <- "18_jobs_housing_ratio"
+opportunity <- "79_dist_growth_opp_areas"
+
+
+# Function to read a summary file into a data.table
+
+create_summary_datatable <- function(metric, output_date) {
+
+  summary_file <- paste0(getwd(),"/summary_files/",metric,"_",output_date,".xlsx")
+
+  # List of Scenario Names
+  summary_df <- NULL
+  scenario_names <- excel_sheets(summary_file)
+
+  for (scenario in scenario_names) {
+    working_df <- read_excel(summary_file,sheet=scenario)
+
+    if (is.null(summary_df)) {summary_df <- working_df}
+    else {summary_df <- rbind(summary_df,working_df)}
+  
+  }  
+
+  setDT(summary_df)
+  return(summary_df)
+
+}
+
+clean_summary_datatable <- function(working_dt, working_geography, working_columns, updated_names, updated_order) {
+
+  working_table <- working_dt[geography %in% working_geography]
+  working_table <- working_table[,..working_columns]
+  setnames(working_table, updated_names)
+  setcolorder(working_table, updated_order)
+  
+  return(working_table)
+
+}
+
+create_housing_type_table <- function(ht_table, working_columns, percentage_columns, numerical_columns, working_container) {
+  
+  working_table <- ht_table[,..working_columns]
+  clean_table <- datatable(working_table, container = working_container, rownames = FALSE)
+
+  # Format Share Columns to be Percentages adn centered
+  for (working_column in percentage_columns) {
+    clean_table <- clean_table %>% 
+      formatPercentage(working_column, 1) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }
+
+  # Format Numeric Columns to have comma separation and centered
+  for (working_column in numeric_columns) {
+    clean_table <- clean_table %>% 
+      formatCurrency(working_column, "", digits = 0) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }
+  
+  return(clean_table)
+}
+
+ht_table_container = htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 2, 'Type'),
+      th(rowspan =2, colspan = 2, 'Base Year'),
+      th(colspan = 3, 'PUG - Stay the Course'),
+      th(colspan = 3, 'PUG - Reset Urban Growth'),
+      th(colspan = 3, 'PUG - Transit Focused Growth')
+    ),
+    tr(
+      lapply(rep(c('Units', 'Share', 'Share of Growth'), 3), th)
+    )
+  )
+))
+
+jhr_table_container = htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 2, 'Geography'),
+      th(rowspan =2, colspan = 1, 'Base Year'),
+      th(colspan = 2, 'PUG - Stay the Course'),
+      th(colspan = 2, 'PUG - Reset Urban Growth'),
+      th(colspan = 2, 'PUG - Transit Focused Growth')
+    ),
+    tr(
+      lapply(rep(c('Index', 'Change'), 3), th)
+    )
+  )
+))
+
+```
+
+This document contains summary information relevant to multiple Preliminary Urban Growth Scenarios (PUGs) that are being prepared to understand different options for inputs that could be used in an initial Preferred Alernative for VISION 2050. These scenarios were all summarized on `r toString(summary_file_date)`.
+
+## 1. Job/Housing Ratio (indexed to regional average) {.tabset .tabset.fade .tabset-pills}
+THe ratio of jobs to housing varies slightly amongst the various scenarios ....
+
+```{r jhr_setup, include=FALSE}
+
+# Housing Type Column Information
+keep_cols <- c("subarea_name","scenario","ehindex_yr2017","ehindex_yr2050")
+upd_nms <- c("geography","scenario","base_index","future_index")
+
+# Create TOD Growth Data.Table to Cast for Final DT Tables
+working_dt <- create_summary_datatable(job_housing,summary_file_date)
+working_dt <- working_dt[,..keep_cols]
+setnames(working_dt, upd_nms)
+
+working_dt[working_dt == "minority"] <- "Minority"
+working_dt[working_dt == "non-minority"] <- "Non-Minority"
+
+working_dt[working_dt == "poverty"] <- "Poverty"
+working_dt[working_dt == "non-poverty"] <- "Non-Poverty"
+
+# Create the List of Column Names based on the Scenarios in the output file
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+final_columns <- c("geography","base_index_PUG-STC")
+for (scenario in scenario_names) {
+  final_columns <- c(final_columns, paste0("future_index_",scenario))
+}
+
+values_to_cast <- c("base_index","future_index")
+
+```
+
+### Region
+Summary of Jobs-Housing Balance by Sub-Areas in the Region.
+```{r region_jhr, echo=FALSE, warning=FALSE,message=FALSE}
+
+jhr_table <- clean_summary_datatable(working_dt,c("King","Sea-Shore","South King","East King","Kitsap","Pierce","Snohomish","Region"),upd_nms,upd_nms,upd_nms)
+final_table <- dcast(jhr_table, geography ~ scenario, value.var = values_to_cast)
+
+final_table <- final_table[,..final_columns]
+
+#calculate delta compared to base year for each scenario
+for (scenario in scenario_names) {
+  final_table[,paste0("delta_",scenario)] <-0
+  working_scenario_name <- paste0("future_index_",scenario)
+  base_scenario_name <- c("base_index_PUG-STC")
+  final_table[,paste0("delta_",scenario)] <- (final_table[,..working_scenario_name] - final_table[,..base_scenario_name])
+}
+
+# Define Order of Columns
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+updated_order <- c("geography","base_index_PUG-STC")
+for (scenario in scenario_names) {
+  updated_order <- c(updated_order, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Define order of rows
+setcolorder(final_table, updated_order)
+final_row_order <- c("King","Sea-Shore","South King","East King","Kitsap","Pierce","Snohomish","Region")
+final_table$geography <- factor(final_table$geography, levels = final_row_order)
+final_table <- final_table[order(geography),]
+
+clean_table <- datatable(final_table, container = jhr_table_container, rownames = FALSE)
+
+numeric_columns <- c("base_index_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Format Numeric Columns to have comma separation and centered
+for (working_column in numeric_columns) {
+  clean_table <- clean_table %>% 
+    formatCurrency(working_column, "", digits = 2) %>%
+    formatStyle(working_column,`text-align` = 'center')
+}
+
+
+clean_table
+  
+```
+
+### Minority
+Summary of Jobs-Housing Balance for areas with more than 50% people of color.
+```{r minority_jhr, echo=FALSE, warning=FALSE,message=FALSE}
+
+jhr_table <- clean_summary_datatable(working_dt,c("Minority","Non-Minority","Region"),upd_nms,upd_nms,upd_nms)
+final_table <- dcast(jhr_table, geography ~ scenario, value.var = values_to_cast)
+
+final_table <- final_table[,..final_columns]
+
+#calculate delta compared to base year for each scenario
+for (scenario in scenario_names) {
+  final_table[,paste0("delta_",scenario)] <-0
+  working_scenario_name <- paste0("future_index_",scenario)
+  base_scenario_name <- c("base_index_PUG-STC")
+  final_table[,paste0("delta_",scenario)] <- (final_table[,..working_scenario_name] - final_table[,..base_scenario_name])
+}
+
+# Define Order of Columns
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+updated_order <- c("geography","base_index_PUG-STC")
+for (scenario in scenario_names) {
+  updated_order <- c(updated_order, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Define order of rows
+setcolorder(final_table, updated_order)
+final_row_order <- c("Minority","Non-Minority","Region")
+final_table$geography <- factor(final_table$geography, levels = final_row_order)
+final_table <- final_table[order(geography),]
+
+clean_table <- datatable(final_table, container = jhr_table_container, rownames = FALSE)
+
+numeric_columns <- c("base_index_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Format Numeric Columns to have comma separation and centered
+for (working_column in numeric_columns) {
+  clean_table <- clean_table %>% 
+    formatCurrency(working_column, "", digits = 2) %>%
+    formatStyle(working_column,`text-align` = 'center')
+}
+
+
+clean_table
+  
+```
+
+### Poverty
+Summary of Jobs-Housing Balance for areas with more than 50% lower income households.
+```{r poverty_jhr, echo=FALSE, warning=FALSE,message=FALSE}
+
+jhr_table <- clean_summary_datatable(working_dt,c("Poverty","Non-Poverty","Region"),upd_nms,upd_nms,upd_nms)
+final_table <- dcast(jhr_table, geography ~ scenario, value.var = values_to_cast)
+
+final_table <- final_table[,..final_columns]
+
+#calculate delta compared to base year for each scenario
+for (scenario in scenario_names) {
+  final_table[,paste0("delta_",scenario)] <-0
+  working_scenario_name <- paste0("future_index_",scenario)
+  base_scenario_name <- c("base_index_PUG-STC")
+  final_table[,paste0("delta_",scenario)] <- (final_table[,..working_scenario_name] - final_table[,..base_scenario_name])
+}
+
+# Define Order of Columns
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+updated_order <- c("geography","base_index_PUG-STC")
+for (scenario in scenario_names) {
+  updated_order <- c(updated_order, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Define order of rows
+setcolorder(final_table, updated_order)
+final_row_order <- c("Poverty","Non-Poverty","Region")
+final_table$geography <- factor(final_table$geography, levels = final_row_order)
+final_table <- final_table[order(geography),]
+
+clean_table <- datatable(final_table, container = jhr_table_container, rownames = FALSE)
+
+numeric_columns <- c("base_index_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_index_",scenario),paste0("delta_",scenario))
+}
+
+# Format Numeric Columns to have comma separation and centered
+for (working_column in numeric_columns) {
+  clean_table <- clean_table %>% 
+    formatCurrency(working_column, "", digits = 2) %>%
+    formatStyle(working_column,`text-align` = 'center')
+}
+
+
+clean_table
+  
+```
+
+## 2. Population and Job Growth in TOD areas {.tabset .tabset.fade .tabset-pills}
+Population and Job growth in transit station areas differs amongst the various scenarios ....
+
+```{r tod_growth_setup, include=FALSE}
+
+# Housing Type Column Information
+tod_cols <- c("Countyname","scenario","indicator","yr2017_tod_actual","yr2017_share_in_tod_actual",               "yr2050_tod","yr2050_share_in_tod","delta_share_in_tod")
+
+tod_nms <- c("geography","scenario","type","base_units","base_share","future_units","future_share","share_of_change")
+
+# Create TOD Growth Data.Table to Cast for Final DT Tables
+tod_dt <- create_summary_datatable(job_pop_tod,summary_file_date)
+tod_dt <- tod_dt[,..tod_cols]
+setnames(tod_dt, tod_nms)
+
+# Replace the Type description to match the Title in the final tables
+tod_dt[tod_dt == "population"] <- "People"
+tod_dt[tod_dt == "employment"] <- "Jobs"
+
+# Create the List of Column Names based on the Scenarios in the output file
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+final_columns <- c("type","base_units_PUG-STC","base_share_PUG-STC")
+for (scenario in scenario_names) {
+  final_columns <- c(final_columns, paste0("future_units_",scenario),paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+# Create List of Columns that should be formatted as percentages
+percent_columns <- c("base_share_PUG-STC")
+for (scenario in scenario_names) {
+  percent_columns <- c(percent_columns, paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+numeric_columns <- c("base_units_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_units_",scenario))
+}
+
+values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
+
+```
+
+### Region
+Summary of growth in TOD areas for the entire PSRC Region.
+```{r region_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+region_tod <- clean_summary_datatable(tod_dt,"Region",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(region_tod, type ~ scenario, value.var = values_to_cast)
+
+final_region_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_region_tod_table
+
+```
+
+### King
+Summary of growth in TOD areas for King County.
+```{r king_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+king_tod <- clean_summary_datatable(tod_dt,"King",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(king_tod, type ~ scenario, value.var = values_to_cast)
+
+final_king_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_king_tod_table
+
+```
+
+### Kitsap
+Summary of growth in TOD areas for Kitsap County.
+```{r kitsap_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+kitsap_tod <- clean_summary_datatable(tod_dt,"Kitsap",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(kitsap_tod, type ~ scenario, value.var = values_to_cast)
+
+final_kitsap_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_kitsap_tod_table
+
+```
+
+### Pierce
+Summary of growth in TOD areas for Pierce County.
+```{r pierce_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+pierce_tod <- clean_summary_datatable(tod_dt,"Pierce",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(pierce_tod, type ~ scenario, value.var = values_to_cast)
+
+final_pierce_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_pierce_tod_table
+
+```
+
+### Snohomish
+Summary of growth in TOD areas for Snohomish County.
+```{r snohomish_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+snohomish_tod <- clean_summary_datatable(tod_dt,"Snohomish",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(snohomish_tod, type ~ scenario, value.var = values_to_cast)
+
+final_snohomish_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_snohomish_tod_table
+
+```
+
+### Minority
+Summary of growth in TOD areas for areas with more than 50% people of color.
+```{r minority_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+minority_tod <- clean_summary_datatable(tod_dt,"minority",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(minority_tod, type ~ scenario, value.var = values_to_cast)
+
+final_minority_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_minority_tod_table
+
+```
+
+### Poverty
+Summary of growth in TOD areas for areas with more than 50% lower income households.
+```{r poverty_tod, echo=FALSE, warning=FALSE,message=FALSE}
+
+poverty_tod <- clean_summary_datatable(tod_dt,"poverty",tod_nms,tod_nms,tod_nms)
+final_table <- dcast(poverty_tod, type ~ scenario, value.var = values_to_cast)
+
+final_poverty_tod_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_poverty_tod_table
+
+```
+
+## 3. Housing Type Mix {.tabset .tabset.fade .tabset-pills}
+Housing Type varies by ....
+```{r housing_type_setup, include=FALSE}
+
+# Housing Type Column Information
+ht_columns <- c("geography","scenario","res_density_type","residential_units_base","residential_units_yr2050","share_residential_units_base","share_residential_units_yr2050","share_delta")
+
+ht_names <- c("geography","scenario","type","base_units","future_units","base_share","future_share","share_of_change")
+ht_order <- c("geography","scenario","type","base_units","base_share","future_units","future_share","share_of_change")
+
+# Create Housing Type Data.Table to Cast for Final DT Tables
+housing_type_dt <- create_summary_datatable(housing_type,summary_file_date)
+
+# Replace the Type description to match the Title in the final tables
+housing_type_dt[housing_type_dt == "low"] <- "1. At low density (<12 DU/acre)"
+housing_type_dt[housing_type_dt == "med"] <- "2. At moderate density (12-49 DU/acre)"
+housing_type_dt[housing_type_dt == "high"] <- "3. At high density (50+ DU/acre)"
+
+# Create the List of Column Names based on the Scenarios in the output file
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+final_columns <- c("type","base_units_PUG-STC","base_share_PUG-STC")
+for (scenario in scenario_names) {
+  final_columns <- c(final_columns, paste0("future_units_",scenario),paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+# Create List of Columns that should be formatted as percentages
+percent_columns <- c("base_share_PUG-STC")
+for (scenario in scenario_names) {
+  percent_columns <- c(percent_columns, paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+numeric_columns <- c("base_units_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_units_",scenario))
+}
+
+values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
+
+```
+
+### Region
+Summary of Housing Type Mix for the entire PSRC Region.
+```{r region_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+region_type <- clean_summary_datatable(housing_type_dt,"Region",ht_columns,ht_names,ht_order)
+final_table <- dcast(region_type, type ~ scenario, value.var = values_to_cast)
+
+final_region_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_region_ht_table
+
+```
+
+### King County
+Summary of Housing Type Mix for King County.
+```{r king_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+king_type <- clean_summary_datatable(housing_type_dt,"King",ht_columns,ht_names,ht_order)
+final_table <- dcast(king_type, type ~ scenario, value.var = values_to_cast)
+
+final_king_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_king_ht_table
+
+```
+
+### Kitsap County
+Summary of Housing Type Mix for Kitsap County.
+```{r kitsap_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+kitsap_type <- clean_summary_datatable(housing_type_dt,"Kitsap",ht_columns,ht_names,ht_order)
+final_table <- dcast(kitsap_type, type ~ scenario, value.var = values_to_cast)
+
+final_kitsap_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_kitsap_ht_table
+
+```
+
+### Pierce County
+Summary of Housing Type Mix for Pierce County.
+```{r pierce_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+pierce_type <- clean_summary_datatable(housing_type_dt,"Pierce",ht_columns,ht_names,ht_order)
+final_table <- dcast(pierce_type, type ~ scenario, value.var = values_to_cast)
+
+final_pierce_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_pierce_ht_table
+
+```
+
+### Snohomish County
+Summary of Housing Type Mix for Snohomish County.
+```{r snohomish_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+snohomish_type <- clean_summary_datatable(housing_type_dt,"Snohomish",ht_columns,ht_names,ht_order)
+final_table <- dcast(snohomish_type, type ~ scenario, value.var = values_to_cast)
+
+final_snohomish_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_snohomish_ht_table
+
+```
+
+### Minority
+Summary of Housing Type Mix for areas with more than 50% people of color.
+```{r minority_ht, echo=FALSE, warning=FALSE,message=FALSE}
+
+minority_type <- clean_summary_datatable(housing_type_dt,"minority",ht_columns,ht_names,ht_order)
+final_table <- dcast(minority_type, type ~ scenario, value.var = values_to_cast)
+
+final_minority_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_minority_ht_table
+
+```
+
+### Poverty
+Summary of Housing Type Mix for areas with more than 50% lower income households.
+```{r poverty_ht, echo=FALSE, warning=FALSE,message=FALSE}
+poverty_type <- clean_summary_datatable(housing_type_dt,"poverty",ht_columns,ht_names,ht_order)
+final_table <- dcast(poverty_type, type ~ scenario, value.var = values_to_cast)
+
+final_poverty_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_poverty_ht_table
+
+```
+
+## 4. Growth in Opportunity Areas {.tabset .tabset.fade .tabset-pills}
+Gowth varies by ....
+```{r opportunity_type_setup, include=FALSE}
+
+# Housing Type Column Information
+working_columns <- c("county","scenario","indicator","index","yr2017_actual","share_yr2017_actual","yr2050","share_yr2050","share_delta")
+
+working_names <- c("geography","scenario","type","index", "base_units","base_share","future_units","future_share","share_of_change")
+
+working_order <- c("geography","scenario","type","index", "base_units","base_share","future_units","future_share","share_of_change")
+
+# Create Housing Type Data.Table to Cast for Final DT Tables
+working_dt <- create_summary_datatable(opportunity,summary_file_date)
+working_dt <- working_dt[,..working_columns]
+setnames(working_dt, working_names)
+
+# Create the List of Column Names based on the Scenarios in the output file
+scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
+final_columns <- c("index","base_units_PUG-STC","base_share_PUG-STC")
+for (scenario in scenario_names) {
+  final_columns <- c(final_columns, paste0("future_units_",scenario),paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+# Create List of Columns that should be formatted as percentages
+percent_columns <- c("base_share_PUG-STC")
+for (scenario in scenario_names) {
+  percent_columns <- c(percent_columns, paste0("future_share_",scenario),paste0("share_of_change_",scenario))
+}
+
+numeric_columns <- c("base_units_PUG-STC")
+for (scenario in scenario_names) {
+  numeric_columns <- c(numeric_columns, paste0("future_units_",scenario))
+}
+
+values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
+
+final_row_order <- c("Very Low","Low","Moderate","High","Very High","Moderate to Very High")
+
+```
+
+### Region
+Summary of growth in opportunity areas for the entire PSRC Region.
+
+**Population**
+```{r region_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r region_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r region_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+### King
+Summary of growth in opportunity areas for King County.
+
+**Population**
+```{r king_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r king_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r king_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+### Kitsap
+Summary of growth in opportunity areas for Kitsap County.
+
+**Population**
+```{r kitsap_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r kitsap_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r kitsap_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+### Pierce
+Summary of growth in opportunity areas for Pierce County.
+
+**Population**
+```{r Pierce_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r Pierce_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r Pierce_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+### Snohomish
+Summary of growth in opportunity areas for Snohomish County.
+
+**Population**
+```{r Snohomish_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r Snohomish_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r Snohomish_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+### Minority
+Summary of growth in opportunity areas for areas with more than 50% people of color.
+
+**Population**
+```{r minority_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
+working_table <- working_table[type %in% "population"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Households**
+```{r minority_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
+working_table <- working_table[type %in% "households"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
+
+**Employment**
+```{r minority_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
+working_table <- working_table[type %in% "employment"]
+final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
+final_table$index <- factor(final_table$index, levels = final_row_order)
+final_table <- final_table[order(index),]
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+final_table
+
+```
