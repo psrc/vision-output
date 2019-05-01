@@ -55,14 +55,12 @@ create_housing_type_table <- function(ht_table, working_columns, percentage_colu
   
   working_table <- ht_table[,..working_columns]
   clean_table <- datatable(working_table, container = working_container, rownames = FALSE)
-
   # Format Share Columns to be Percentages adn centered
   for (working_column in percentage_columns) {
     clean_table <- clean_table %>% 
       formatPercentage(working_column, 1) %>%
       formatStyle(working_column,`text-align` = 'center')
   }
-
   # Format Numeric Columns to have comma separation and centered
   for (working_column in numeric_columns) {
     clean_table <- clean_table %>% 
@@ -71,6 +69,19 @@ create_housing_type_table <- function(ht_table, working_columns, percentage_colu
   }
   
   return(clean_table)
+}
+
+create_opportunity_table <- function(opp_table, opp_geography, opp_variable, opp_columns, opp_to_cast, opp_row_order) {
+  
+  working_table <- opp_table[geography %in% opp_geography]
+  working_table <- working_table[,..opp_columns]
+
+  working_table <- working_table[type %in% opp_variable]
+  final_table <- dcast(working_table, index ~ scenario, value.var = opp_to_cast)
+  final_table$index <- factor(final_table$index, levels = opp_row_order)
+  final_table <- final_table[order(index),]
+  
+  return(final_table)
 }
 
 ht_table_container = htmltools::withTags(table(
@@ -581,13 +592,10 @@ Summary of growth in opportunity areas for the entire PSRC Region.
 **Population**
 ```{r region_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Region", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -595,27 +603,21 @@ final_table
 **Households**
 ```{r region_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Region", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r region_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Region",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Region", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -626,13 +628,10 @@ Summary of growth in opportunity areas for King County.
 **Population**
 ```{r king_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "King", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -640,27 +639,21 @@ final_table
 **Households**
 ```{r king_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "King", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r king_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"King",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "King", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -671,13 +664,10 @@ Summary of growth in opportunity areas for Kitsap County.
 **Population**
 ```{r kitsap_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Kitsap", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -685,27 +675,21 @@ final_table
 **Households**
 ```{r kitsap_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Kitsap", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r kitsap_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Kitsap",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Kitsap", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -716,13 +700,10 @@ Summary of growth in opportunity areas for Pierce County.
 **Population**
 ```{r Pierce_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Pierce", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -730,27 +711,21 @@ final_table
 **Households**
 ```{r Pierce_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Pierce", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r Pierce_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Pierce",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Pierce", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -761,13 +736,10 @@ Summary of growth in opportunity areas for Snohomish County.
 **Population**
 ```{r Snohomish_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Snohomish", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -775,27 +747,21 @@ final_table
 **Households**
 ```{r Snohomish_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Snohomish", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r Snohomish_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"Snohomish",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "Snohomish", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -806,13 +772,10 @@ Summary of growth in opportunity areas for areas with more than 50% people of co
 **Population**
 ```{r minority_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
-working_table <- working_table[type %in% "population"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "minority", "population", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
@@ -820,27 +783,54 @@ final_table
 **Households**
 ```{r minority_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
-working_table <- working_table[type %in% "households"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "minority", "households", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
 ```
 
-**Employment**
+**Jobs**
 ```{r minority_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
 
-working_table <- clean_summary_datatable(working_dt,"minority",working_names,working_names,working_order)
-working_table <- working_table[type %in% "employment"]
-final_table <- dcast(working_table, index ~ scenario, value.var = values_to_cast)
-final_table$index <- factor(final_table$index, levels = final_row_order)
-final_table <- final_table[order(index),]
+final_table <- create_opportunity_table(working_dt, "minority", "employment", working_names, values_to_cast, final_row_order)
 
 final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
 final_table
 
+```
+
+### Poverty
+Summary of growth in opportunity areas for areas with more than 50% lower income households.
+
+**Population**
+```{r poverty_pop_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+final_table <- create_opportunity_table(working_dt, "poverty", "population", working_names, values_to_cast, final_row_order)
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
+final_table
+```
+
+**Households**
+```{r poverty_hh_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+final_table <- create_opportunity_table(working_dt, "poverty", "households", working_names, values_to_cast, final_row_order)
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
+final_table
+```
+
+**Jobs**
+```{r poverty_jobs_opp, echo=FALSE, warning=FALSE,message=FALSE}
+
+final_table <- create_opportunity_table(working_dt, "poverty", "employment", working_names, values_to_cast, final_row_order)
+
+final_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
+
+final_table
 ```
