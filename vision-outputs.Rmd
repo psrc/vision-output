@@ -25,7 +25,16 @@ create_table_subset <- function(tbl,geo) {
   return (wrk_tbl)
 } 
 
-create_opportunity_table <- function(tbl, vars, to_cast, final_order) {
+create_table_housing_type <- function(tbl, to_cast, final_order) {
+  
+  wrk_tbl <- dcast(tbl, type ~ scenario, value.var = to_cast)
+  wrk_tbl$type <- factor(wrk_tbl$type, levels = final_order)
+  wrk_tbl <- wrk_tbl[order(type),]
+  
+  return(wrk_tbl)
+}
+
+create_table_opportunity <- function(tbl, vars, to_cast, final_order) {
   
   wrk_tbl <- tbl[type %in% vars]
   wrk_tbl <- dcast(wrk_tbl, index ~ scenario, value.var = to_cast)
@@ -55,6 +64,34 @@ create_clean_table <- function(tbl, cols, shr_cols, num_cols, tbl_container) {
   
   return(clean_tbl)
 }
+
+create_column_names <- function(working_file, summary_date, first_col) {
+
+  # Create the List of Column Names based on the Scenarios in the output file
+  scen_nms <- excel_sheets(paste0(getwd(),"/summary_files/",working_file,"_",summary_date,".xlsx"))
+  final_columns <- c(first_col,"base_units_PUG-STC","base_share_PUG-STC")
+  for (scen in scen_nms) {
+    final_columns <- c(final_columns, paste0("future_units_",scen),paste0("future_share_",scen),paste0("share_of_change_",scen))
+  }
+
+  # Create List of Columns that should be formatted as percentages
+  percent_columns <- c("base_share_PUG-STC")
+  for (scen in scen_nms) {
+    percent_columns <- c(percent_columns, paste0("future_share_",scen),paste0("share_of_change_",scen))
+  }
+
+  numeric_columns <- c("base_units_PUG-STC")
+  for (scen in scen_nms) {
+    numeric_columns <- c(numeric_columns, paste0("future_units_",scen))
+  }
+  
+  fnl_cols <- list(final_columns,percent_columns,numeric_columns)
+  return(fnl_cols)
+}
+
+
+
+
 
 create_summary_datatable <- function(metric, output_date) {
 
@@ -454,152 +491,94 @@ Housing Type varies by ....
 ```{r housing_type_setup, include=FALSE}
 
 # Housing Type Column Information
-ht_columns <- c("geography","scenario","res_density_type","residential_units_base","residential_units_yr2050","share_residential_units_base","share_residential_units_yr2050","share_delta")
+orig_cols <- c("geography","scenario","res_density_type","residential_units_base","share_residential_units_base","residential_units_yr2050","share_residential_units_yr2050","share_delta")
+upd_nms <- c("geography","scenario","type","base_units","base_share","future_units","future_share","share_of_change")
+hsg_geography <- list("Region","King","Kitsap","Pierce","Snohomish","minority","poverty")
+final_row_order <- c("Low density (<12 DU/acre)","Moderate density (12-49 DU/acre)","High density (50+ DU/acre)")
+values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
 
-ht_names <- c("geography","scenario","type","base_units","future_units","base_share","future_share","share_of_change")
-ht_order <- c("geography","scenario","type","base_units","base_share","future_units","future_share","share_of_change")
-
-# Create Housing Type Data.Table to Cast for Final DT Tables
-housing_type_dt <- create_summary_datatable(housing_type,summary_file_date)
+# Create Full Measure Data.Table to Cast for Final DT Tables and update column names
+measure_dt <- create_summary_datatable(housing_type,summary_file_date)
+measure_dt <- measure_dt[,..orig_cols]
+setnames(measure_dt, upd_nms)
 
 # Replace the Type description to match the Title in the final tables
-housing_type_dt[housing_type_dt == "low"] <- "1. At low density (<12 DU/acre)"
-housing_type_dt[housing_type_dt == "med"] <- "2. At moderate density (12-49 DU/acre)"
-housing_type_dt[housing_type_dt == "high"] <- "3. At high density (50+ DU/acre)"
+measure_dt[measure_dt == "low"] <- "Low density (<12 DU/acre)"
+measure_dt[measure_dt == "med"] <- "Moderate density (12-49 DU/acre)"
+measure_dt[measure_dt == "high"] <- "High density (50+ DU/acre)"
 
-# Create the List of Column Names based on the Scenarios in the output file
-scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
-final_columns <- c("type","base_units_PUG-STC","base_share_PUG-STC")
-for (scenario in scenario_names) {
-  final_columns <- c(final_columns, paste0("future_units_",scenario),paste0("future_share_",scenario),paste0("share_of_change_",scenario))
-}
+# Create List of Column Names
+tbl_cols <- create_column_names(housing_type,summary_file_date,"type")
 
-# Create List of Columns that should be formatted as percentages
-percent_columns <- c("base_share_PUG-STC")
-for (scenario in scenario_names) {
-  percent_columns <- c(percent_columns, paste0("future_share_",scenario),paste0("share_of_change_",scenario))
-}
+# Create Partial Function to generate lists of final tables for display and create full list of geography subsets
+tbl_subset <- partial(create_table_subset, tbl = measure_dt)
+measure_subset <- map(hsg_geography, tbl_subset)
 
-numeric_columns <- c("base_units_PUG-STC")
-for (scenario in scenario_names) {
-  numeric_columns <- c(numeric_columns, paste0("future_units_",scenario))
-}
-
-values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
+# Create a Partial Function to Create the Variable Specific Tables by Geography
+tbl_ht <- partial(create_table_housing_type, to_cast = values_to_cast, final_order=final_row_order)
+ht <- map(measure_subset,tbl_ht)
+  
+# Create a Partial function that does final formats for the data.tables and create them
+fmt <- partial(create_clean_table,cols=tbl_cols[[1]],shr_cols=tbl_cols[[2]],num_cols=tbl_cols[[3]],tbl_container=ht_table_container)
+final_ht <- map(ht,fmt)
 
 ```
 
 ### Region
 Summary of Housing Type Mix for the entire PSRC Region.
 ```{r region_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-region_type <- clean_summary_datatable(housing_type_dt,"Region",ht_columns,ht_names,ht_order)
-final_table <- dcast(region_type, type ~ scenario, value.var = values_to_cast)
-
-final_region_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_region_ht_table
-
+final_ht[[1]]
 ```
 
 ### King County
 Summary of Housing Type Mix for King County.
 ```{r king_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-king_type <- clean_summary_datatable(housing_type_dt,"King",ht_columns,ht_names,ht_order)
-final_table <- dcast(king_type, type ~ scenario, value.var = values_to_cast)
-
-final_king_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_king_ht_table
-
+final_ht[[2]]
 ```
 
 ### Kitsap County
 Summary of Housing Type Mix for Kitsap County.
 ```{r kitsap_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-kitsap_type <- clean_summary_datatable(housing_type_dt,"Kitsap",ht_columns,ht_names,ht_order)
-final_table <- dcast(kitsap_type, type ~ scenario, value.var = values_to_cast)
-
-final_kitsap_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_kitsap_ht_table
-
+final_ht[[3]]
 ```
 
 ### Pierce County
 Summary of Housing Type Mix for Pierce County.
 ```{r pierce_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-pierce_type <- clean_summary_datatable(housing_type_dt,"Pierce",ht_columns,ht_names,ht_order)
-final_table <- dcast(pierce_type, type ~ scenario, value.var = values_to_cast)
-
-final_pierce_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_pierce_ht_table
-
+final_ht[[4]]
 ```
 
 ### Snohomish County
 Summary of Housing Type Mix for Snohomish County.
 ```{r snohomish_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-snohomish_type <- clean_summary_datatable(housing_type_dt,"Snohomish",ht_columns,ht_names,ht_order)
-final_table <- dcast(snohomish_type, type ~ scenario, value.var = values_to_cast)
-
-final_snohomish_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_snohomish_ht_table
-
+final_ht[[5]]
 ```
 
 ### Minority
 Summary of Housing Type Mix for areas with more than 50% people of color.
 ```{r minority_ht, echo=FALSE, warning=FALSE,message=FALSE}
-
-minority_type <- clean_summary_datatable(housing_type_dt,"minority",ht_columns,ht_names,ht_order)
-final_table <- dcast(minority_type, type ~ scenario, value.var = values_to_cast)
-
-final_minority_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_minority_ht_table
-
+final_ht[[6]]
 ```
 
 ### Poverty
 Summary of Housing Type Mix for areas with more than 50% lower income households.
 ```{r poverty_ht, echo=FALSE, warning=FALSE,message=FALSE}
-poverty_type <- clean_summary_datatable(housing_type_dt,"poverty",ht_columns,ht_names,ht_order)
-final_table <- dcast(poverty_type, type ~ scenario, value.var = values_to_cast)
-
-final_poverty_ht_table <- create_housing_type_table(final_table,final_columns,percent_columns,numeric_columns,ht_table_container)
-final_poverty_ht_table
-
+final_ht[[7]]
 ```
 
 ## 4. Growth in Opportunity Areas {.tabset .tabset.fade .tabset-pills}
 Gowth varies by ....
 ```{r opportunity_type_setup, include=FALSE}
 
-# Housing Type Column Information
+# Column Information
 orig_cols <- c("county","scenario","indicator","index","yr2017_actual","share_yr2017_actual","yr2050","share_yr2050","share_delta")
 upd_nms <- c("geography","scenario","type","index", "base_units","base_share","future_units","future_share","share_of_change")
 opp_geography <- list("Region","King","Kitsap","Pierce","Snohomish","minority","poverty")
 values_to_cast <- c("base_units","base_share","future_units","future_share","share_of_change")
 final_row_order <- c("Very Low","Low","Moderate","High","Very High","Moderate to Very High")
 
-# Create the List of Column Names based on the Scenarios in the output file
-scenario_names <- excel_sheets(paste0(getwd(),"/summary_files/",housing_type,"_",summary_file_date,".xlsx"))
-final_columns <- c("index","base_units_PUG-STC","base_share_PUG-STC")
-for (scenario in scenario_names) {
-  final_columns <- c(final_columns, paste0("future_units_",scenario),paste0("future_share_",scenario),paste0("share_of_change_",scenario))
-}
-
-# Create List of Columns that should be formatted as percentages
-percent_columns <- c("base_share_PUG-STC")
-for (scenario in scenario_names) {
-  percent_columns <- c(percent_columns, paste0("future_share_",scenario),paste0("share_of_change_",scenario))
-}
-
-numeric_columns <- c("base_units_PUG-STC")
-for (scenario in scenario_names) {
-  numeric_columns <- c(numeric_columns, paste0("future_units_",scenario))
-}
+# Create List of Column Names
+tbl_cols <- create_column_names(opportunity,summary_file_date,"index")
 
 # Create Full Measure Data.Table to Cast for Final DT Tables and update column names
 measure_dt <- create_summary_datatable(opportunity,summary_file_date)
@@ -611,7 +590,7 @@ tbl_subset <- partial(create_table_subset, tbl = measure_dt)
 measure_subset <- map(opp_geography, tbl_subset)
 
 # Create a Partial Function to Create the Variable Specific Tables by Geography
-opp <- partial(create_opportunity_table, vars = wrk_vars, to_cast = values_to_cast, final_order=final_row_order)
+opp <- partial(create_table_opportunity, vars = wrk_vars, to_cast = values_to_cast, final_order=final_row_order)
 
 # Create Population, Household and Employment Lists of data.tables
 wrk_vars <- "population"
@@ -624,7 +603,7 @@ wrk_vars <- "employment"
 opp_emp <- map(measure_subset,opp)
 
 # Create a Partial function that does final formats for the data.tables and create them
-fmt <- partial(create_clean_table,cols=final_columns,shr_cols=percent_columns,num_cols=numeric_columns,tbl_container=ht_table_container)
+fmt <- partial(create_clean_table,cols=tbl_cols[[1]],shr_cols=tbl_cols[[2]],num_cols=tbl_cols[[3]],tbl_container=ht_table_container)
 
 final_pop <- map(opp_pop,fmt)
 final_hh <- map(opp_hh,fmt)
