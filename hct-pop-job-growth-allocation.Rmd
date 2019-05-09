@@ -1,0 +1,456 @@
+---
+title: "VISION 2050"
+author: "Distribution of Growth around High Capacity Transit"
+date: "May 2019"
+output: 
+  powerpoint_presentation:
+    reference_doc: psrc-template.pptx
+always_allow_html: yes
+---
+
+```{r initial_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(purrr)
+library(ggplot2)
+library(data.table)
+library(scales)
+
+calc_growth_share <- function(pop_chg, growth_share) {
+  pop_shr <- as.integer(pop_chg * growth_share)
+  return(pop_shr)
+}
+
+create_bar_chart <- function(table, xcolumn, ycolumn, fcolumn, ylimit, yname, xname, wrk_title) {
+
+  # Create a Set of bar charts grouped by year for each area
+  wrk_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn, fill= fcolumn), show.legend = FALSE) +
+  geom_col()+
+  scale_y_continuous(labels = comma, name = yname,limits = c(0, ylimit))+
+  xlab(xname)+
+  theme_light()+
+  ggtitle(wrk_title)+
+  theme(legend.position="none")
+  
+  return(wrk_chart)
+}
+
+create_line_chart <- function(table,xcolumn, ycolumn, ylimit, yname,  xname, wrk_title) {
+  
+  wrk_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn)) +
+  geom_line(color="#F05A28",size=1) +
+  scale_y_continuous(labels = comma, name = yname, limits = c(0, ylimit))+
+  theme_light()+
+  xlab(xname)+
+  ggtitle(wrk_title)+
+  theme(legend.position="none")
+  
+  return(wrk_chart)
+}
+
+create_combined_chart <- function(table, xcolumn, ycolumn, fcolumn, line_ycolumn, ylimit, yname, xname, wrk_title, fill_clr) {
+
+  # Create a Set of bar charts grouped by year for each area
+  wrk_chart <- ggplot(table) +
+    geom_col(aes(x = xcolumn, y= ycolumn, fill= fcolumn), show.legend = FALSE, fill=fill_clr) +
+    theme_light()+
+    ggtitle(wrk_title)+
+    theme(legend.position="none") +
+    
+    geom_line(aes(x = xcolumn, y= line_ycolumn),color="#F05A28",size=1) +
+    scale_y_continuous(sec.axis = sec_axis(~./max(line_ycolumn))) +
+    
+    scale_y_continuous(labels = comma, name = yname,limits = c(0, ylimit)) +
+    scale_x_continuous(labels = percent, name = xname, breaks = xcolumn) +
+    
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+  return(wrk_chart)
+}
+
+pop_2017 <- 4066800
+hh_pop_2017 <- 3986995
+hh_2017 <- 1587176
+hh_size_2017 <- hh_pop_2017 / hh_2017
+jobs_2017 <- 2250546
+
+pop_2050 <- 5823165
+hh_pop_2050 <- 5720596
+hh_2050 <- 2419949
+hh_size_2050 <- hh_pop_2050 / hh_2050
+jobs_2050 <- 3391293
+
+lrt_hh_cap <- 246788
+lrt_pop_cap <- as.integer(lrt_hh_cap * hh_size_2050)
+lrt_job_cap <- 518107
+
+wrk_share <- c(0.50,0.55,0.60,0.65,0.70,0.75)
+pop_cap <- rep(lrt_pop_cap,length(wrk_share))
+job_cap <- rep(lrt_job_cap,length(wrk_share))
+
+capacity_table <- as.data.table(list(share=wrk_share, pop_capacity=pop_cap, job_capacity=job_cap))
+
+# Create a list of Total Population Growth for all HCT areas using a list of growth share assumptions
+hct_pop_calc <- partial(calc_growth_share, pop_chg= (pop_2050-pop_2017))
+hct_pop <- map(wrk_share, hct_pop_calc)
+
+hct_job_calc <- partial(calc_growth_share, pop_chg= (jobs_2050-jobs_2017))
+hct_job <- map(wrk_share, hct_job_calc)
+
+```
+## Overview
+
+Scenarios to Consider for Population & Job Growth around High Capacity Transit:
+
+
+- 50% of Total Growth around HCT
+- 55% of Total Growth around HCT
+- 60% of Total Growth around HCT
+- 65% of Total Growth around HCT
+- 70% of Total Growth around HCT
+- 75% of Total Growth around HCT
+
+
+If we then consider these total shares of growth in all high capacity transit areas and focuse on the share that goes to light rail to vary between 50% and 75%, we can see ...
+
+```{r growth_50_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "50"
+wrk_num <- 1
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 50% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_50_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 50% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_50_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
+
+```{r growth_55_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "55"
+wrk_num <- 2
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 55% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_55_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 55% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_55_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
+
+```{r growth_60_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "60"
+wrk_num <- 3
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 60% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_60_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 60% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_60_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
+
+```{r growth_65_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "65"
+wrk_num <- 4
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 65% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_65_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 65% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_65_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
+
+```{r growth_70_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "70"
+wrk_num <- 5
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 70% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_70_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 70% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_70_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
+
+```{r growth_75_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+grw_shr <- "75"
+wrk_num <- 6
+wrk_pop <- hct_pop[[wrk_num]]
+wrk_job <- hct_job[[wrk_num]]
+
+wrk_lrt_pop <- partial(calc_growth_share, pop_chg=wrk_pop)
+lrt_pop <- map(wrk_share,wrk_lrt_pop)
+
+wrk_lrt_job <- partial(calc_growth_share, pop_chg=wrk_job)
+lrt_job <- map(wrk_share,wrk_lrt_job)
+
+lrt_pop <- unlist(lrt_pop)
+lrt_job <- unlist(lrt_job)
+
+wrk_table <- as.data.table(list(share=wrk_share, population=lrt_pop, jobs=lrt_job))
+combined_table <- merge(wrk_table, capacity_table, by = "share")
+
+pop_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$population, combined_table$share, combined_table$pop_capacity, 1000000, "Population Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Population Growth near Light Rail","dodgerblue4")
+
+job_chart <- create_combined_chart(combined_table, combined_table$share, combined_table$jobs, combined_table$share, combined_table$job_capacity, 800000, "Job Growth near Light Rail", "Share of Total HCT Growth near Light Rail", "Job Growth near Light Rail","slateblue4")
+
+```
+## 75% of Total Population Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_pop_cap), -1), nsmall=0, big.mark=","))` more people within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the population growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_pop_cap / wrk_pop)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r pop_75_chart, echo = FALSE}
+pop_chart
+```
+:::
+::::::::::::::
+
+## 75% of Total Job Growth to High Capacity Transit Areas
+:::::::::::::: {.columns}
+::: {.column}
+
+With the current capacity assumptions for jurisdictions, there is room for approximately `r toString(format(round(as.numeric(lrt_job_cap), -1), nsmall=0, big.mark=","))` more jobs within 1/2 mile of light rail stations in the region.
+
+- Assuming `r toString(grw_shr)`% of the job growth is assigned to all high capacity transit station areas, light rail areas could accomodate up to `r toString(format(round((lrt_job_cap / wrk_job)*100,1), nsmall=0))`% of the overall HCT growth with its current unused capacity.
+
+:::
+::: {.column}
+```{r job_75_chart, echo = FALSE}
+job_chart
+```
+:::
+::::::::::::::
