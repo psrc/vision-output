@@ -1,0 +1,67 @@
+---
+title: "plots-growth-by-type-child"
+output: html_document
+---
+```{r, include=FALSE}
+
+wrk_num <- (my_list[[i]])
+plot_tbl <- NULL
+
+for (files in alternatives) {
+
+  ph1_pop <- as.integer(results_by_type[[paste0(files[[2]],"_pop_change")]][[wrk_num+1]])
+  ph2_pop <- as.integer(results_by_type[[paste0(files[[2]],"_pop_change")]][[wrk_num+2]])
+  
+  ph1_pop_cap <- as.integer(results_by_type[[paste0(files[[2]],"_pop_capacity")]][[wrk_num+1]])
+  ph2_pop_cap <- as.integer(results_by_type[[paste0(files[[2]],"_pop_capacity")]][[wrk_num+2]])
+  
+  wrk_tbl <- as.data.table(list(geography=c("Before 2025","After 2025"), scenario=c(paste0(files[[3]])), population_growth=c(ph1_pop,ph2_pop), population_capacity=c(ph1_pop_cap,ph2_pop_cap)))
+  
+  if (is.null(plot_tbl)) {plot_tbl <- wrk_tbl} else {plot_tbl <- rbind(plot_tbl,wrk_tbl)}
+
+}  
+
+psrc_colors <- c(
+    "Growth" = "#91268F",
+    "Capacity" = "#F05A28",
+    "53053" = "#8CC63E",
+    "53061" = "#00A7A0")
+
+geo_levels <- c("Before 2025","After 2025")
+var_levels <- c("Growth","Capacity")
+
+# Format table to create stacked bars
+wrk_tbl <- melt(plot_tbl, id.vars=c('geography','scenario'))
+
+wrk_tbl$geography <- factor(wrk_tbl$geography, levels = geo_levels)
+wrk_tbl <- wrk_tbl[order(geography),]
+
+wrk_tbl <- wrk_tbl[, variable:=as.character(variable)]
+wrk_tbl[wrk_tbl == "population_growth"] <- "Growth"
+wrk_tbl[wrk_tbl == "population_capacity"] <- "Capacity"
+
+wrk_tbl$variable <- factor(wrk_tbl$variable, levels = var_levels)
+wrk_tbl <- wrk_tbl[order(variable),]
+
+# Create a Grouped Chart 
+wrk_chart <- ggplot(wrk_tbl, aes(geography, value)) + geom_bar(aes(fill = variable), 
+  width = 0.4, position = position_dodge(width=0.5), stat="identity") + 
+  theme_light()+
+  scale_fill_manual(values=psrc_colors)+
+  scale_y_continuous(labels = comma)+
+  theme(legend.position="bottom", legend.title = 
+    element_blank(),axis.title.x=element_blank(), 
+    axis.title.y=element_blank())
+
+# Add facets based on Scenario Name and make it interactive
+wrk_chart <- wrk_chart + facet_grid(cols = vars(scenario))
+working_plot <- ggplotly(wrk_chart) %>% 
+  layout(legend = list(orientation = "h", xanchor = "center", x = 0.60, y = -0.1))
+
+```
+
+### `r header_names[[wrk_num]]`
+
+```{r, echo=FALSE, results="asis"}
+working_plot
+```

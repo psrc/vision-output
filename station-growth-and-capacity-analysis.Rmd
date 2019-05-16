@@ -1,0 +1,195 @@
+---
+title: "VISION 2050 Growth Comparisons"
+output: html_document
+---
+
+```{r data_setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(purrr)
+library(ggplot2)
+library(data.table)
+library(scales)
+library(plotly)
+library(DT)
+
+pop_2017 <- 4066800
+hh_pop_2017 <- 3986995
+hh_2017 <- 1587176
+jobs_2017 <- 2250546
+
+pop_2050 <- 5823165
+hh_pop_2050 <- 5720596
+hh_2050 <- 2419949
+jobs_2050 <- 3391293
+
+region_pop_growth <-  pop_2050 - pop_2017
+region_jobs_growth <-  jobs_2050 - jobs_2017
+hh_size <- hh_pop_2050 / hh_2050
+
+hh_cap_col <- "DUdiff50"
+job_cap_col <- "JOBSPdiff50"
+
+# Parcel Capacity File Details
+cap_file <- "parcel_level_capacity"
+base <- "parcel__dataset_table__households_jobs__2017"
+tfg <- "parcel__dataset_table__households_jobs__2050_tfg"
+ppa65 <- "parcel__dataset_table__households_jobs__2050_ppa65"
+
+# Lists for Analysis
+base_year <- list(c(base, "base_year", "Base Year"))
+alternatives <- list(c(tfg, "tfg", "Transit Focused Growth"), c(ppa65, "ppa65", "PPA 65/75"))
+parcel_files <- c(base_year,alternatives)
+
+lu_atttributes <- list("population","employment","hh_capacity","job_capacity")
+tod_types <- list(0,1,2,3,4,5,6,7,8,9)
+tod_names <- c("Non-HCT","Light Rail: Before 2025","Light Rail: After 2025","Commuter Rail: Before 2025","Commuter Rail: After 2025","Ferry: Before 2025","Ferry: After 2025","Bus Rapid Transit: Before 2025","Bus Rapid Transit: After 2025","Regional Growth Centers")
+
+sum_table_values <- function(tbl, w_scen, w_var, w_tod) {
+  
+  wrk_tot <- as.integer(tbl[scenario %in% w_scen & variable %in%  w_var & tod_id %in% w_tod,sum(value)])
+  return(wrk_tot)
+}
+
+create_table_container <- function(cat_nms, scen_nms, metric_nms) {
+
+  wrk_container = htmltools::withTags(table(
+    class = 'display',
+    thead(
+      tr(
+        th(class = 'dt-center', rowspan = 3, cat_nms)
+      ),
+      tr(
+        lapply(scen_nms, function(x) th(class = 'dt-center', colspan =2, x))
+      ),
+          tr(
+        lapply(rep(metric_nms, length(scen_nms)), function(x) th(class = 'dt-center', x))
+      )
+    )
+  ))
+
+return(wrk_container)
+
+}
+
+capacity_file <- paste0(getwd(),"/inputs/",cap_file,".csv")
+capacity <- read.csv(capacity_file)
+setDT(capacity)
+cols <- c("parcel_id","tod_id",hh_cap_col,job_cap_col)
+capacity <-capacity[,..cols]
+upd_nms <- c("parcel_id","tod_id","hh_capacity","job_capacity")
+setnames(capacity,upd_nms)
+capacity <- capacity[,(upd_nms):= lapply(.SD, as.integer), .SDcols = upd_nms]
+
+parcels <- NULL
+
+for (files in parcel_files) {
+
+  # Read in Scenario Specific Popualtion and Employment Data
+  parcels_file <- paste0(getwd(),"/inputs/",files[[1]],".tab")
+  wrk_parcels <- read.table(parcels_file, sep = '\t',header = TRUE)
+  setDT(wrk_parcels)
+  cols <- c("parcel_id","population","employment")
+  wrk_parcels <- wrk_parcels[,..cols]
+  wrk_parcels <- wrk_parcels[,(cols):= lapply(.SD, as.integer), .SDcols = cols]
+  
+  # Join results with TOD ID and capacity
+  wrk_parcels <- merge(wrk_parcels, capacity, by = "parcel_id")
+  
+  # Flatten the table
+  wrk_parcels <- melt(wrk_parcels,id.vars = c("parcel_id","tod_id"), measure.vars = c("population","employment","hh_capacity","job_capacity"))
+  wrk_parcels$scenario <- files[[2]]
+  
+  if (is.null(parcels)) {parcels <- wrk_parcels} else {parcels <- rbind(parcels,wrk_parcels)}
+
+}
+
+results_by_type = NULL
+
+# Calculate the Total Population and Employment by Scenario and place in a named list
+for (files in parcel_files) {
+  for (lu in lu_atttributes) {
+    calc_by_tod <- partial(sum_table_values, tbl=parcels, w_scen=files[[2]], w_var=lu)
+    results_by_type[[paste0(files[[2]],"_",lu)]] <- map(tod_types,calc_by_tod)
+  }
+}
+
+# Add Popualtion Capacity to the Results List
+for (files in parcel_files) {
+  results_by_type[[paste0(files[[2]],"_pop_capacity")]] <- lapply(results_by_type[[paste0(files[[2]],"_hh_capacity")]], "*" , hh_size)
+}
+
+# Calculate the Change from the Base Year by by alternative and area
+for (files in alternatives) {
+  results_by_type[[paste0(files[[2]],"_pop_change")]] <- Map('-',  results_by_type[[paste0(files[[2]],"_population")]], results_by_type[["base_year_population"]])
+  
+  results_by_type[[paste0(files[[2]],"_job_change")]] <- Map('-',  results_by_type[[paste0(files[[2]],"_employment")]], results_by_type[["base_year_employment"]])
+}
+
+# Calculate the Share of the Total Change from the Base Year by alternative and area
+for (files in alternatives) {
+  
+  # Calculate the Total Change from the Base Year by by alternative and area
+  total_hh_pop_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_pop_change")]]))
+  total_job_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_job_change")]]))
+  
+  results_by_type[[paste0(files[[2]],"_share_pop_change")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_pop_change")]], total_hh_pop_chg)
+  results_by_type[[paste0(files[[2]],"_share_job_change")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_job_change")]], total_job_chg)
+}
+
+# Calculate the Remaining Capacity by alternative and area
+for (files in alternatives) {
+  results_by_type[[paste0(files[[2]],"_remain_pop_cap")]] <- Map('-',  results_by_type[[paste0(files[[2]],"_pop_capacity")]], results_by_type[[paste0(files[[2]],"_pop_change")]])
+  
+  results_by_type[[paste0(files[[2]],"_remain_job_cap")]] <- Map('-',  results_by_type[[paste0(files[[2]],"_job_capacity")]], results_by_type[[paste0(files[[2]],"_job_change")]])
+}
+
+# Calculate the Share of remaining Capacity by alternative and area
+for (files in alternatives) {
+  results_by_type[[paste0(files[[2]],"_percent_pop_cap")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_pop_change")]], results_by_type[[paste0(files[[2]],"_pop_capacity")]])
+  
+  results_by_type[[paste0(files[[2]],"_percent_job_cap")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_job_change")]], results_by_type[[paste0(files[[2]],"_job_capacity")]])
+}
+
+```
+
+The four counties that comprise the Central Puget Sound Region were home to `r toString(format(round(as.numeric(pop_2017), -2), nsmall=0, big.mark=","))` people in 2017. By the year 2050, the population of the region is forecasted to grow to more than `r toString(format(round(as.numeric(pop_2050), -2), nsmall=0, big.mark=","))`, an increase of `r toString(format(round(as.numeric(region_pop_growth), -2), nsmall=0, big.mark=","))` people. Having `r toString(format(round((region_pop_growth/pop_2017)*100,0), nsmall=0))`% more people living, working and playing in the region requires everyone to plan together to ensure that we can accommodate this growth and still maintain the quality of life people enjoy today.
+
+One reason for the continued growth in population is fairly strong forecasted economic growth well into the future. In 2017, there were approximately `r toString(format(round(as.numeric(jobs_2017), -2), nsmall=0, big.mark=","))` total jobs in the four county region. By 2050, the region is expecting another `r toString(format(round(as.numeric(region_jobs_growth), -2), nsmall=0, big.mark=","))` jobs to be created, an increase of approximately `r toString(format(round((region_jobs_growth / jobs_2017)*100,0), nsmall=0))`%.
+
+
+
+## Population and Employment Growth by Area Type {.tabset .tabset.fade .tabset-pills}
+
+VISION 2040, the blueprint for regional growth, was adopted a decade ago. Many things have changed since the adoption of VISION 2040 and one major transportation element has been the construction and commitment to regional high capacity transit. By 2050, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansions. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the latest Regional Transportation Plan (RTP) for the region in 2018.
+
+There are numerous alternatives to consider for transit related growth.
+
+```{r growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1:5)
+header_names = list(c("Total","population","employment"), c("Growth","pop_change","job_change"), c("Share of Growth","share_pop_change","share_job_change"), c("Percent of Capacity Used","percent_pop_cap","percent_job_cap"), c("Remaining Capacity","remain_pop_cap","remain_job_cap"))
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("metric-tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+
+## Population Growth around Transit Stations {.tabset .tabset.fade .tabset-pills}
+There is a lot of growth planned around transit station areas.
+
+```{r growth-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,3,5,7)
+header_names = list("Light Rail","Light Rail","Commuter Rail","Commuter Rail","Ferry","Ferry","Bus Rapid Transit","Bus Rapid Transit")
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("plots-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+

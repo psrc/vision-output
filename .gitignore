@@ -1,4 +1,5 @@
 /Data
+/inputs
 *.html
 *.Rhistory
 *.xlsx
