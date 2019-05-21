@@ -49,7 +49,7 @@ s_tbl$TOD <- factor(s_tbl$TOD, levels = tod_names)
 s_tbl <- s_tbl[order(TOD),]
 
 pop_job_table_container <- create_table_container('TOD Area', scenario_names, c('People','Jobs'))
-clean_tbl <- datatable(s_tbl, container = pop_job_table_container, rownames = FALSE)
+clean_tbl <- datatable(s_tbl, container = pop_job_table_container, rownames = FALSE, options = list(pageLength = 15))
 
 if (header_names[[wrk_num]][[1]] == "Percent of Capacity Used" | header_names[[wrk_num]][[1]] == "Share of Growth") {
   

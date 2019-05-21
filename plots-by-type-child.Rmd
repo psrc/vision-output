@@ -9,13 +9,13 @@ plot_tbl <- NULL
 
 for (files in alternatives) {
 
-  ph1_pop <- as.integer(results_by_type[[paste0(files[[2]],"_pop_change")]][[wrk_num+1]])
-  ph2_pop <- as.integer(results_by_type[[paste0(files[[2]],"_pop_change")]][[wrk_num+2]])
+  ph1 <- as.integer(results_by_type[[paste0(files[[2]],"_",lu_att,"_change")]][[wrk_num+1]])
+  ph2 <- as.integer(results_by_type[[paste0(files[[2]],"_",lu_att,"_change")]][[wrk_num+2]])
   
-  ph1_pop_cap <- as.integer(results_by_type[[paste0(files[[2]],"_pop_capacity")]][[wrk_num+1]])
-  ph2_pop_cap <- as.integer(results_by_type[[paste0(files[[2]],"_pop_capacity")]][[wrk_num+2]])
+  ph1_cap <- as.integer(results_by_type[[paste0("all_scenarios_",lu_att,"_capacity")]][[wrk_num+1]])
+  ph2_cap <- as.integer(results_by_type[[paste0("all_scenarios_",lu_att,"_capacity")]][[wrk_num+2]])
   
-  wrk_tbl <- as.data.table(list(geography=c("Before 2025","After 2025"), scenario=c(paste0(files[[3]])), population_growth=c(ph1_pop,ph2_pop), population_capacity=c(ph1_pop_cap,ph2_pop_cap)))
+  wrk_tbl <- as.data.table(list(geography=c("Before 2025","After 2025"), scenario=c(paste0(files[[3]])), Growth=c(ph1,ph2), Capacity=c(ph1_cap,ph2_cap)))
   
   if (is.null(plot_tbl)) {plot_tbl <- wrk_tbl} else {plot_tbl <- rbind(plot_tbl,wrk_tbl)}
 
@@ -29,6 +29,7 @@ psrc_colors <- c(
 
 geo_levels <- c("Before 2025","After 2025")
 var_levels <- c("Growth","Capacity")
+scen_levls <- c(alternatives[[1]][[3]],alternatives[[2]][[3]],alternatives[[3]][[3]])
 
 # Format table to create stacked bars
 wrk_tbl <- melt(plot_tbl, id.vars=c('geography','scenario'))
@@ -36,12 +37,11 @@ wrk_tbl <- melt(plot_tbl, id.vars=c('geography','scenario'))
 wrk_tbl$geography <- factor(wrk_tbl$geography, levels = geo_levels)
 wrk_tbl <- wrk_tbl[order(geography),]
 
-wrk_tbl <- wrk_tbl[, variable:=as.character(variable)]
-wrk_tbl[wrk_tbl == "population_growth"] <- "Growth"
-wrk_tbl[wrk_tbl == "population_capacity"] <- "Capacity"
-
 wrk_tbl$variable <- factor(wrk_tbl$variable, levels = var_levels)
 wrk_tbl <- wrk_tbl[order(variable),]
+
+wrk_tbl$scenario <- factor(wrk_tbl$scenario, levels = scen_levls)
+wrk_tbl <- wrk_tbl[order(scenario),]
 
 # Create a Grouped Chart 
 wrk_chart <- ggplot(wrk_tbl, aes(geography, value)) + geom_bar(aes(fill = variable), 
