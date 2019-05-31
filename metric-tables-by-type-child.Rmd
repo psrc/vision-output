@@ -53,7 +53,7 @@ clean_tbl <- datatable(s_tbl, container = pop_job_table_container, rownames = FA
 
 if (header_names[[wrk_num]][[1]] == "Percent of Capacity Used" | header_names[[wrk_num]][[1]] == "Share of Growth") {
   
-  # Format Share Columns to be Percentages adn centered
+  # Format Share Columns to be Percentages and centered
   for (working_column in numeric_columns) {
     clean_tbl <- clean_tbl %>% 
       formatPercentage(working_column, 1) %>%

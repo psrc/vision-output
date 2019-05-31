@@ -12,6 +12,9 @@ library(data.table)
 library(scales)
 library(plotly)
 library(DT)
+library(leaflet)
+library(sp)
+library(rgdal)
 
 # Flag to determine if new lookups should be created
 new_geo_lookup <- "no"
@@ -32,6 +35,7 @@ cap_file <- "parcel_level_capacity"
 base <- "parcel__dataset_table__households_jobs__2017"
 tfg <- "parcel__dataset_table__households_jobs__2050_tfg"
 rug <- "parcel__dataset_table__households_jobs__2050_rug"
+stc <- "parcel__dataset_table__households_jobs__2050_stc"
 ppa65 <- "parcel__dataset_table__households_jobs__2050_ppa65"
 transit <- "parcel_id_and_transit_buffer_id"
 
@@ -41,7 +45,8 @@ all_transit_file  <- "all_transit"
 county_file  <- "county"
 minority_file <- "minority"
 city_file  <- "city"
-povert_file <- "poverty"
+poverty_file <- "poverty"
+lrt_stations <- "lrt_stations"
 
 # Capacity Column Names
 hh_cap_col <- "DUdiff50"
@@ -49,11 +54,12 @@ job_cap_col <- "JOBSPdiff50"
 
 # Lists for Analysis
 base_year <- list(c(base, "base_year", "Base Year"))
-alternatives <- list(c(tfg, "tfg", "Transit Focused Growth"), c(rug, "rug", "Reset Urban Growth"),c(ppa65, "ppa65", "PPA 65/75"))
+alternatives <- list(c(stc, "stc", "Stay the Course"),c(tfg, "tfg", "Transit Focused Growth"), c(rug, "rug", "Reset Urban Growth"))
 parcel_files <- c(base_year,alternatives)
 
 cap_atttributes <- list("pop_capacity","job_capacity")
 lu_atttributes <- list("population","employment")
+cap_atttributes <- list("pop_capacity","job_capacity")
 tod_types <- list(0,1,2,3,4,5,6,7,8,9,10)
 tod_names <- c("Non-HCT","Light Rail: Before 2025","Light Rail: After 2025","Commuter Rail: Before 2025","Commuter Rail: After 2025","Ferry: Before 2025","Ferry: After 2025","Bus Rapid Transit: Before 2025","Bus Rapid Transit: After 2025","Regional Growth Centers","Local Transit")
 
@@ -91,6 +97,36 @@ create_geo_lookup <- function(fname, ftype, wrk_cols ,id_nm) {
   wrk_tbl <- wrk_tbl[,wrk_cols]
   fwrite(wrk_tbl, paste0(getwd(),"/inputs/",id_nm,".csv"))
 
+}
+
+create_station_area_tables <- function(tbl, alt_list,current_variable, tbl_view_len) {
+
+  short_names <- NULL
+  for (files in alt_list) {
+    short_names <- c(short_names, files[[2]])
+    }
+
+  scenario_names <- NULL
+  for (files in alt_list) {
+    scenario_names <- c(scenario_names, files[[3]])
+    }
+
+  # Create Variable Specific Table by Scenario
+  wrk_summary <- tbl[variable %in% current_variable]
+  wrk_summary[,variable:=NULL]
+
+  s_tbl <- dcast(wrk_summary, station_name ~ scenario, value.var="results")
+  setcolorder(s_tbl,c("station_name",short_names))
+
+  clean_tbl <- datatable(s_tbl, rownames = FALSE, options = list(pageLength = tbl_view_len), colnames = c('Station Area', scenario_names))
+
+  for (working_column in short_names) {
+    clean_tbl <- clean_tbl %>% 
+      formatCurrency(working_column, "", digits = 0) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }
+
+  return(clean_tbl)
 }
 
 region_pop_growth <-  pop_2050 - pop_2017
@@ -163,6 +199,7 @@ for (wrk_att in cap_atttributes) {
   
 }
 
+parcel_capacity <- wrk_parcels
 ```
 
 ```{r base_calualtions, include=FALSE}
@@ -196,6 +233,183 @@ for (wrk_att in lu_atttributes) {
   
 }
 
+base_values <- wrk_parcels
+```
+
+```{r lrt_stations_setup, include=FALSE}
+# Create a data.table of parcel id's with the LRT Station Area Names
+w_fname <- paste0(getwd(),"/inputs/",lrt_stations,".csv")
+lrt_station_lookup <- read.csv(w_fname)
+setDT(lrt_station_lookup)
+
+# Values for melted parcels
+wrk_measures <- c("population","employment")
+wrk_vars <- c("parcel_id","station_name")
+  
+# Clear out temporary data.tables
+wrk_parcels <- NULL
+w_tbl <- NULL
+parcels <- NULL
+
+for (files in parcel_files) {
+
+  # Read in Scenario Specific Popualtion and Employment Data
+  w_fname <- paste0(getwd(),"/inputs/",files[[1]],".tab")
+  w_tbl <- read.table(w_fname, sep = '\t',header = TRUE)
+  setDT(w_tbl)
+  cols <- c("parcel_id",wrk_measures)
+  w_tbl <- w_tbl[,..cols]
+  w_tbl <- w_tbl[,(cols):= lapply(.SD, as.integer), .SDcols = cols]
+  
+  # Join with Station Area Names
+  wrk_parcels <- merge(w_tbl, lrt_station_lookup, by = "parcel_id")
+  wrk_parcels <- melt(wrk_parcels, id.vars = wrk_vars, measure.vars = wrk_measures)
+  wrk_parcels$scenario <- files[[2]]
+  
+  # Join with Capacity
+  wrk_capacity <- merge(parcel_capacity, lrt_station_lookup, by = "parcel_id")
+  wrk_capacity$scenario <- files[[2]]
+  wrk_capacity[,tod_id:=NULL]
+  wrk_parcels <- rbind(wrk_parcels,wrk_capacity)
+  
+  if (is.null(parcels)) {parcels <- wrk_parcels} else {parcels <- rbind(parcels,wrk_parcels)}
+
+}
+
+station_summary <- parcels[,.(results = sum(value)),by=.(station_name,variable,scenario)]
+station_summary <- station_summary[station_name != ""]
+
+# Calculate the Population and Employment Growth from 2017 by Scenario
+for (files in alternatives) {
+  
+  base_att <- NULL
+  scen_att <- NULL
+  scen_delta <- NULL
+
+  for (lu_att in lu_atttributes) {
+    wrk_scen <- files[[2]]
+    
+    # Get Base Year Values by Station Area
+    base_att <- station_summary[variable %in% lu_att & scenario %in% "base_year"]
+    base_att <- base_att[,c("station_name","results")]
+    setnames(base_att,c("station_name","base_year"))  
+
+    # Get Scenario Values by Station Area
+    scen_att <- station_summary[variable %in% lu_att & scenario %in% wrk_scen]
+    scen_att <- scen_att[,c("station_name","results")]
+    setnames(scen_att,c("station_name","future_year"))
+
+    # Merge and Calculate the difference
+    scen_delta <- merge(base_att, scen_att, by = "station_name")
+    scen_delta$results <- scen_delta$future_year - scen_delta$base_year
+    scen_delta$variable <- paste0(lu_att,"_growth")
+    scen_delta$scenario <- wrk_scen
+    scen_delta <- scen_delta[,c("station_name","variable","scenario","results")]
+
+    station_summary <- rbind(station_summary,scen_delta)
+  }
+}  
+
+# Calculate the Population and Employment Capacity Remaining by Scenario
+for (files in alternatives) {
+  
+  base_att <- NULL
+  scen_att <- NULL
+  scen_delta <- NULL
+  grw_att <- NULL
+
+  for (cap_att in cap_atttributes) {
+    wrk_scen <- files[[2]]
+    
+    if (cap_att == "pop_capacity") {grw_att <- "population_growth"} else {grw_att <- "employment_growth"}
+    
+    # Get Capacity by Station Area
+    base_att <- station_summary[variable %in% cap_att & scenario %in% "base_year"]
+    base_att <- base_att[,c("station_name","results")]
+    setnames(base_att,c("station_name","capacity"))  
+
+    # Get Scenario Growth by Station Area
+    scen_att <- station_summary[variable %in% grw_att & scenario %in% wrk_scen]
+    scen_att <- scen_att[,c("station_name","results")]
+    setnames(scen_att,c("station_name","growth"))
+
+    # Merge and Calculate the difference
+    scen_delta <- merge(base_att, scen_att, by = "station_name")
+    scen_delta$results <- scen_delta$capacity - scen_delta$growth
+    scen_delta$variable <- paste0(cap_att,"_remaining")
+    scen_delta$scenario <- wrk_scen
+    scen_delta <- scen_delta[,c("station_name","variable","scenario","results")]
+
+    station_summary <- rbind(station_summary,scen_delta)
+  }
+} 
+
+# Calculate the % of Population and Employment Capacity Used by Scenario
+for (files in alternatives) {
+  
+  base_att <- NULL
+  scen_att <- NULL
+  scen_delta <- NULL
+  grw_att <- NULL
+
+  for (cap_att in cap_atttributes) {
+    wrk_scen <- files[[2]]
+    
+    if (cap_att == "pop_capacity") {grw_att <- "population_growth"} else {grw_att <- "employment_growth"}
+    
+    # Get Capacity by Station Area
+    base_att <- station_summary[variable %in% cap_att & scenario %in% "base_year"]
+    base_att <- base_att[,c("station_name","results")]
+    setnames(base_att,c("station_name","capacity"))
+    base_att[base_att == 0] <- 1
+
+    # Get Scenario Growth by Station Area
+    scen_att <- station_summary[variable %in% grw_att & scenario %in% wrk_scen]
+    scen_att <- scen_att[,c("station_name","results")]
+    setnames(scen_att,c("station_name","growth"))
+
+    # Merge and Calculate the difference
+    scen_delta <- merge(base_att, scen_att, by = "station_name")
+    
+    if (scen_delta$capacity == 0) {scen_delta$results <- 1} else {scen_delta$results <- scen_delta$growth / scen_delta$capacity}
+    
+    scen_delta$variable <- paste0(cap_att,"_used")
+    scen_delta$scenario <- wrk_scen
+    scen_delta <- scen_delta[,c("station_name","variable","scenario","results")]
+
+    station_summary <- rbind(station_summary,scen_delta)
+  }
+} 
+
+# Remove Base Year now that delta's have been generated
+station_summary <- station_summary[scenario != "base_year"]
+
+# Format Share Columns to be Percentages and centered
+short_names <- NULL
+for (files in alternatives) {
+  short_names <- c(short_names, files[[2]])
+  }
+
+# Create Clean Tables
+station_pop_growth <- create_station_area_tables(station_summary,alternatives,"population_growth",15)
+station_job_growth <- create_station_area_tables(station_summary,alternatives,"employment_growth",15)
+
+station_pop_capacity_remaining <- create_station_area_tables(station_summary,alternatives,"pop_capacity_remaining",15)
+station_job_capacity_remaining <- create_station_area_tables(station_summary,alternatives,"job_capacity_remaining",15)
+
+station_pop_capacity_used <- create_station_area_tables(station_summary,alternatives,"pop_capacity_used",15)
+for (working_column in short_names) {
+  station_pop_capacity_used <- station_pop_capacity_used %>% 
+    formatPercentage(working_column, 0) %>%
+    formatStyle(working_column,`text-align` = 'center')
+  }
+
+station_job_capacity_used <- create_station_area_tables(station_summary,alternatives,"job_capacity_used",15)
+for (working_column in short_names) {
+  station_job_capacity_used <- station_job_capacity_used %>% 
+    formatPercentage(working_column, 0) %>%
+    formatStyle(working_column,`text-align` = 'center')
+  }
 ```
 
 ```{r scenario_calualtions, include=FALSE}
@@ -267,7 +481,7 @@ One reason for the continued growth in population is fairly strong forecasted ec
 
 ## Population Growth around Transit
 
-VISION 2040, the blueprint for regional growth, was adopted a decade ago. Many things have changed since the adoption of VISION 2040 and one major transportation element has been the construction and commitment to regional high capacity transit. By 2050, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018.
+By 2050, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The charts below illustrate the share of population growth for the `r toString(length(alternatives))` scenarios summarized in this document.
 
 ```{r transit_growth_setup, include=FALSE}
 
@@ -378,14 +592,28 @@ job_pie <- ggplot(w_tbl, aes(x = "", y = value, fill = area)) +
   theme_void()
 
 job_pie <- job_pie + facet_grid(cols = vars(scenario))
+
+w_var <- 'People'
+interim <- subset(wrk_tbl, variable %in% w_var & area %in% "Near High Capacity Transit")
+min_pop_hct <- min(interim$value)
+max_pop_hct <- max(interim$value)
+
+w_var <- 'Jobs'
+interim <- subset(wrk_tbl, variable %in% w_var & area %in% "Near High Capacity Transit")
+min_job_hct <- min(interim$value)
+max_job_hct <- max(interim$value)
+
 ```
+
+For the `r toString(length(alternatives))` scenarios summarized in this document, the share of population growth near High Capcity Transit station areas ranges from `r toString(format(round(min_pop_hct*100,0), nsmall=0))`% to a maximum of `r toString(format(round(max_pop_hct*100,0), nsmall=0))`%. 
 
 ```{r plot_pop_pie_charts, echo=FALSE, fig.asp=0.35}
 pop_pie
 ```
 
 ## Employment Growth around Transit
-Job growth is a key driver of transit use in the region..
+
+For the `r toString(length(alternatives))` scenarios summarized in this document, the share of job growth near High Capcity Transit station areas ranges from `r toString(format(round(min_job_hct*100,0), nsmall=0))`% to a maximum of `r toString(format(round(max_job_hct*100,0), nsmall=0))`%.
 
 ```{r plot_job_pie_charts, echo=FALSE, fig.asp=0.35}
 job_pie
@@ -437,3 +665,86 @@ for (i in seq_along(my_list)) {
 
 `r paste(out, collapse="\n")`
 
+## Population Growth around Light Rail Station Areas {.tabset .tabset.fade .tabset-pills}
+There is a lot of population growth planned around transit station areas.
+
+```{r station-pop-table, echo = FALSE}
+station_pop_growth
+```
+
+```{r lrt_station-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- alternatives
+lu_att <- "population_growth"
+num_typ <- "integer"
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Population Capacity Used around Light Rail Station Areas {.tabset .tabset.fade .tabset-pills}
+Many stations would need to upzone to accomodate the planned growth around the station areas in each alternative.
+
+```{r station-pop-capacity-remaining, echo = FALSE}
+station_pop_capacity_used
+```
+
+```{r lrt_pop-cap-used-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- alternatives
+lu_att <- "pop_capacity_used"
+num_typ <- "percentage"
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Employment Growth around Light Rail Station Areas {.tabset .tabset.fade .tabset-pills}
+There is a lot of job growth planned around transit station areas.
+
+```{r station-job-table, echo = FALSE}
+station_job_growth
+```
+
+```{r lrt-job-station-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- alternatives
+lu_att <- "employment_growth"
+num_typ <- "integer"
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Employment Capacity Used around Light Rail Station Areas {.tabset .tabset.fade .tabset-pills}
+Many stations would need to upzone to accomodate the planned growth around the station areas in each alternative.
+
+```{r station-job-capacity-remaining, echo = FALSE}
+station_job_capacity_used
+```
+
+```{r lrt_job-cap-used-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- alternatives
+lu_att <- "job_capacity_used"
+num_typ <- "percentage"
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`

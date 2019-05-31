@@ -1,0 +1,88 @@
+---
+title: "maps-by-station-child"
+output: html_document
+---
+```{r, include=FALSE}
+
+wrk_tbl <- NULL
+
+# Create Station Area Maps
+wrk_scen <- my_list[[i]][[2]]
+wrk_tbl <- station_summary[variable %in% lu_att & scenario %in% wrk_scen]
+
+# Merge the station data with the Station Area Shapefile
+station.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles',layer='lrt_station_areas_wgs1984')
+station_value <- sp::merge(station.shape, wrk_tbl, by.x = "stop_name", by.y = "station_name")
+
+# Multiple Percentages by 100 for disply
+if (num_typ == "percentage") {station_value$results<-station_value$results*100}
+
+# Create a label format for the interactive map
+if (num_typ == "integer") {
+labels <- paste0("<b>","Station Area: ", "</b>",station_value$stop_name,
+                 "<b> <br>",paste0(lu_att,": "), "</b>", prettyNum(round(station_value$results, -1), big.mark = ",")) %>% lapply(htmltools::HTML)
+bins <- c(0,2000,8000,32000,72000,128000,200000)
+pal <- colorBin("Blues", domain = station_value$results, bins = bins)
+} else {
+
+labels <- paste0("<b>","Station Area: ", "</b>",station_value$stop_name,
+                 "<b> <br>",paste0(lu_att,": "), "</b>", prettyNum(round(station_value$results, 0), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+bins <- c(0,25,50,75,100,150,500)
+pal <- colorBin("Blues", domain = station_value$results, bins = bins)
+}
+
+working_map <- leaflet(data = station_value) %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(fillColor = pal(station_value$results),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight =5,
+                color = "76787A",
+                dashArray ="",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))%>%
+  addEasyButton(easyButton(
+    icon="fa-anchor", title="Bremerton",
+    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-amazon", title="Cross-Lake",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-plane", title="Everett",
+    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-glass", title="Tacoma",
+    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Region",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+
+if (num_typ == "integer") {
+working_map <- working_map %>%
+  addLegend("bottomright", pal=pal, values = station_value$results,
+            title = paste0("Total ",lu_att),
+            opacity = 1)
+} else {
+working_map <- working_map %>%
+  addLegend("bottomright", pal=pal, values = station_value$results,
+            title = paste0("Total ",lu_att),
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1)
+}
+
+```
+
+### `r my_list[[i]][[3]]`
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
