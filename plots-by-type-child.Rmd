@@ -29,7 +29,6 @@ psrc_colors <- c(
 
 geo_levels <- c("Before 2025","After 2025")
 var_levels <- c("Growth","Capacity")
-scen_levls <- c(alternatives[[1]][[3]],alternatives[[2]][[3]],alternatives[[3]][[3]])
 
 # Format table to create stacked bars
 wrk_tbl <- melt(plot_tbl, id.vars=c('geography','scenario'))

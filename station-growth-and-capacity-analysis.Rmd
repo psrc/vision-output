@@ -29,13 +29,24 @@ hh_pop_2050 <- 5720596
 hh_2050 <- 2419949
 jobs_2050 <- 3391293
 
-# Parcel Files
+# SDEIS Files
 cap_file <- "parcel_level_capacity"
 base <- "parcel__dataset_table__households_jobs__2017"
 tfg <- "parcel__dataset_table__households_jobs__2050_tfg"
 rug <- "parcel__dataset_table__households_jobs__2050_rug"
 stc <- "parcel__dataset_table__households_jobs__2050_stc"
+
+# Preliminary Test Scenarios
+pug_tfg <- "parcel__dataset_table__households_jobs__2050_pug_tfg"
+pug_rug <- "parcel__dataset_table__households_jobs__2050_pug_rug"
+pug_stc <- "parcel__dataset_table__households_jobs__2050_pug_stc"
+pug_rug_no_boost <- "parcel__dataset_table__households_jobs__2050_pug_rug_no_boost"
+
+# Preliminary Preferred Alternatives
 ppa65 <- "parcel__dataset_table__households_jobs__2050_ppa65"
+quick_kick <- "parcel__dataset_table__households_jobs__2050_quick_kick"
+cobra_commander <- "parcel__dataset_table__households_jobs__2050_cobra_commander"
+
 transit <- "parcel_id_and_transit_buffer_id"
 
 # Geogrpahic Lookups by parcel
@@ -53,14 +64,15 @@ job_cap_col <- "JOBSPdiff50"
 
 # Lists for Analysis
 base_year <- list(c(base, "base_year", "Base Year"))
-alternatives <- list(c(stc, "stc", "Stay the Course"),c(tfg, "tfg", "Transit Focused Growth"), c(rug, "rug", "Reset Urban Growth"))
+alternatives <- list(c(ppa65, "ppa65", "PPA 65/75"), c(cobra_commander, "ppa65_lrt", "PPA 65/75 LRT Focus"))
 parcel_files <- c(base_year,alternatives)
+scen_levls <- c(alternatives[[1]][[3]],alternatives[[2]][[3]])
 
 cap_atttributes <- list("pop_capacity","job_capacity")
 lu_atttributes <- list("population","employment")
 cap_atttributes <- list("pop_capacity","job_capacity")
-tod_types <- list(0,1,2,3,4,5,6,7,8,9,10)
-tod_names <- c("Non-HCT","Light Rail: Before 2025","Light Rail: After 2025","Commuter Rail: Before 2025","Commuter Rail: After 2025","Ferry: Before 2025","Ferry: After 2025","Bus Rapid Transit: Before 2025","Bus Rapid Transit: After 2025","Regional Growth Centers","Local Transit")
+tod_types <- list(0,1,2,3,4,5,6,7,8,9,10,0:10)
+tod_names <- c("Non-HCT","Light Rail: Before 2025","Light Rail: After 2025","Commuter Rail: Before 2025","Commuter Rail: After 2025","Ferry: Before 2025","Ferry: After 2025","Bus Rapid Transit: Before 2025","Bus Rapid Transit: After 2025","Regional Growth Centers","Local Transit","Region Total")
 
 sum_table_values <- function(tbl, w_scen, w_var, w_tod) {
   
@@ -424,7 +436,7 @@ parcels <- NULL
 
 for (files in alternatives) {
 
-  # Read in Scenario Specific Popualtion and Employment Data
+  # Read in Scenario Specific Population and Employment Data
   w_fname <- paste0(getwd(),"/inputs/",files[[1]],".tab")
   w_tbl <- read.table(w_fname, sep = '\t',header = TRUE)
   setDT(w_tbl)
@@ -456,8 +468,8 @@ for (files in alternatives) {
   results_by_type[[paste0(files[[2]],"_job_change")]] <- Map('-',  results_by_type[[paste0(files[[2]],"_employment")]], results_by_type[["base_year_employment"]])
 
   # Calculate the Share of the Total Change from the Base Year
-  total_hh_pop_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_pop_change")]]))
-  total_job_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_job_change")]]))
+  total_hh_pop_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_pop_change")]])[c(1:11)])
+  total_job_chg <- sum(unlist(results_by_type[[paste0(files[[2]],"_job_change")]])[c(1:11)])
   results_by_type[[paste0(files[[2]],"_share_pop_change")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_pop_change")]], total_hh_pop_chg)
   results_by_type[[paste0(files[[2]],"_share_job_change")]] <- Map('/',  results_by_type[[paste0(files[[2]],"_job_change")]], total_job_chg)  
   
@@ -521,7 +533,7 @@ s_tbl <- s_tbl[order(Area),]
 table_container <- create_table_container('Area Type', scenario_names, c('People','Jobs'))
 clean_tbl <- datatable(s_tbl, container = table_container, rownames = FALSE)
 
-# Format Share Columns to be Percentages adn centered
+# Format Share Columns to be Percentages and centered
 for (working_column in numeric_columns) {
   clean_tbl <- clean_tbl %>% 
     formatPercentage(working_column, 0) %>%
@@ -552,7 +564,7 @@ psrc_colors <- c(
 
 geo_levels <- c("Near High Capacity Transit","Near Local Transit","Rest of Region")
 var_levels <- c("People","Jobs")
-scen_levls <- c(alternatives[[1]][[3]],alternatives[[2]][[3]],alternatives[[3]][[3]])
+
 
 # Format table to create stacked bars
 wrk_tbl <- melt(plot_tbl, id.vars=c('area','scenario'))
