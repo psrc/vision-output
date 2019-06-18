@@ -81,7 +81,7 @@ working_map <- working_map %>%
 
 ```
 
-### `r my_list[[i]][[3]]`
+## `r my_list[[i]][[3]]`
 
 ```{r, echo=FALSE, results="asis"}
 working_map

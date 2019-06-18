@@ -5,44 +5,36 @@ output: html_document
 
 ```{r, include=FALSE}
 wrk_num <- (my_list[[i]])
-
-# Only inlcude Base Year Values on the Totals Tab
-
-if (header_names[[wrk_num]][[1]] == "Total") {
-
-  # Create a list of Scenario Names
-  scenario_names <- NULL
-  for (files in parcel_files) {
-    scenario_names <- c(scenario_names, files[[3]])
-  }
-
-  s_tbl <- data.table(TOD=tod_names, People=unlist(results_by_type[["base_year_population"]]),Jobs=unlist(results_by_type[["base_year_employment"]]))
-  nms <- c("TOD","People-base_year","Jobs-base_year")
-  setnames(s_tbl,nms)
-  numeric_columns <- c("People-base_year","Jobs-base_year")
-} else {
+s_tbl <- NULL
+numeric_columns <- NULL
   
-  s_tbl <- NULL
-  numeric_columns <- NULL
-  
-  # Create a list of Scenario Names
-  scenario_names <- NULL
+# Create a list of Scenario Names
+scenario_names <- NULL
   for (files in alternatives) {
-    scenario_names <- c(scenario_names, files[[3]])
-  }  
-  
+  scenario_names <- c(scenario_names, files[[3]])
 }
-
+  
 # Summarize Action Alternatives
 for (files in alternatives) {
 
-  wrk_tbl <- data.table(TOD=tod_names, People=unlist(results_by_type[[paste0(files[[2]],"_",header_names[[wrk_num]][[2]])]]),Jobs=unlist(results_by_type[[paste0(files[[2]],"_",header_names[[wrk_num]][[3]])]]))
-  nms <- c("TOD",paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
-  setnames(wrk_tbl,nms)
+  if (header_names[[wrk_num]][[1]] == "Total") {
+    wrk_tbl <- data.table(TOD=tod_names, People=unlist(results_by_type[[paste0(files[[2]],"_",analysis_years[[2]],"_",header_names[[wrk_num]][[2]])]]),Jobs=unlist(results_by_type[[paste0(files[[2]],"_",analysis_years[[2]],"_",header_names[[wrk_num]][[3]])]]))
+    nms <- c("TOD",paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
+    setnames(wrk_tbl,nms)
   
-  if(is.null(s_tbl)) {s_tbl <- wrk_tbl} else {s_tbl <- merge(s_tbl, wrk_tbl, by = "TOD")}
-  numeric_columns <- c(numeric_columns, paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
-
+    if(is.null(s_tbl)) {s_tbl <- wrk_tbl} else {s_tbl <- merge(s_tbl, wrk_tbl, by = "TOD")}
+    numeric_columns <- c(numeric_columns, paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
+    
+  } else {
+  
+  
+      wrk_tbl <- data.table(TOD=tod_names, People=unlist(results_by_type[[paste0(files[[2]],"_",header_names[[wrk_num]][[2]])]]),Jobs=unlist(results_by_type[[paste0(files[[2]],"_",header_names[[wrk_num]][[3]])]]))
+      nms <- c("TOD",paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
+      setnames(wrk_tbl,nms)
+  
+      if(is.null(s_tbl)) {s_tbl <- wrk_tbl} else {s_tbl <- merge(s_tbl, wrk_tbl, by = "TOD")}
+      numeric_columns <- c(numeric_columns, paste0(header_names[[wrk_num]][[2]],"-",files[[2]]),paste0(header_names[[wrk_num]][[3]],"-",files[[2]]))
+  }
 }  
 
 s_tbl$TOD <- factor(s_tbl$TOD, levels = tod_names)
@@ -71,7 +63,7 @@ for (working_column in numeric_columns) {
 }
 ```
 
-### `r header_names[[wrk_num]][[1]]`
+## `r header_names[[wrk_num]][[1]]`
 
 ```{r, echo=FALSE, results="asis"}
 clean_tbl

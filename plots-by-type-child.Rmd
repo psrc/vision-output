@@ -10,12 +10,9 @@ plot_tbl <- NULL
 for (files in alternatives) {
 
   ph1 <- as.integer(results_by_type[[paste0(files[[2]],"_",lu_att,"_change")]][[wrk_num+1]])
-  ph2 <- as.integer(results_by_type[[paste0(files[[2]],"_",lu_att,"_change")]][[wrk_num+2]])
-  
   ph1_cap <- as.integer(results_by_type[[paste0("all_scenarios_",lu_att,"_capacity")]][[wrk_num+1]])
-  ph2_cap <- as.integer(results_by_type[[paste0("all_scenarios_",lu_att,"_capacity")]][[wrk_num+2]])
   
-  wrk_tbl <- as.data.table(list(geography=c("Before 2025","After 2025"), scenario=c(paste0(files[[3]])), Growth=c(ph1,ph2), Capacity=c(ph1_cap,ph2_cap)))
+  wrk_tbl <- as.data.table(list(geography=c("HCT Area"), scenario=c(paste0(files[[3]])), Growth=c(ph1), Capacity=c(ph1_cap)))
   
   if (is.null(plot_tbl)) {plot_tbl <- wrk_tbl} else {plot_tbl <- rbind(plot_tbl,wrk_tbl)}
 
@@ -27,7 +24,7 @@ psrc_colors <- c(
     "53053" = "#8CC63E",
     "53061" = "#00A7A0")
 
-geo_levels <- c("Before 2025","After 2025")
+geo_levels <- c("HCT Area")
 var_levels <- c("Growth","Capacity")
 
 # Format table to create stacked bars
@@ -59,7 +56,7 @@ working_plot <- ggplotly(wrk_chart) %>%
 
 ```
 
-### `r header_names[[wrk_num]]`
+## `r header_names[[wrk_num]]`
 
 ```{r, echo=FALSE, results="asis"}
 working_plot
