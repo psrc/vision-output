@@ -1,0 +1,199 @@
+---
+title: "VISION to Elmer"
+author: "Craig Helmann"
+date: "9/16/2019"
+output: html_document
+---
+
+```{r basic_setup, include = FALSE}
+
+library(data.table)
+library(readxl)
+library(odbc)
+library(DBI)
+library(tidyverse)
+library(zoo)
+
+create_table_from_input <- function(fdir,fname,ftype) {
+  w_fname <- paste0(getwd(),"/",fdir,"/",fname,".",ftype)
+  
+  if (ftype == "tab") {wtbl <- read.table(w_fname, sep = '\t',header = TRUE)} 
+  
+  else if (ftype == "dbf") {wtbl <- read.dbf(w_fname)} 
+  
+  else  {wtbl <- read.csv(w_fname)}
+  
+  setDT(wtbl)
+  return(wtbl)
+}
+```
+
+```{r create_macroforecast_datable, include = FALSE}
+w_fname <- paste0(getwd(),"/inputs/2018psrc-macroeconomicforecast.xlsx")
+macro_forecast <- read_excel(w_fname,sheet = "Forecast")
+setDT(macro_forecast)
+
+# Clean up column names
+data_pattern <- "([0-9]{4})"
+data_columns <- str_subset(colnames(macro_forecast), data_pattern)
+data_columns <- str_remove(data_columns, "([Q][0-9]{1})")
+nms <- c("category","variable",as.numeric(data_columns))
+setnames(macro_forecast,nms)
+
+# Remove the Blank rows from the data.table and the last row as well
+macro_forecast <- macro_forecast[rowSums(is.na(macro_forecast)) != ncol(macro_forecast),]
+macro_forecast <- macro_forecast[-nrow(macro_forecast),]
+
+# Replace Blank row values in the variable column with Total, fill in values and remove any NaN rows
+macro_forecast$variable[is.na(macro_forecast$variable)] <- "Total"
+new_rnames <- na.locf(macro_forecast$category)
+macro_forecast$category <- new_rnames
+macro_forecast <- na.omit(macro_forecast)
+
+# Convert the wide table foramt to long format
+macro_forecast <- melt(macro_forecast, id.vars=c("category","variable"),variable.name = "year",variable.factor = FALSE)
+nms <- c("year", "value")
+macro_forecast[, nms] <- macro_forecast[, lapply(.SD, as.numeric), .SDcols = nms]
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "AWS-PROD-SQL\\COHO",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Write data to Central Database
+dbWriteTable(elmer_connection, "macroeconomic_forecast", macro_forecast, overwrite=TRUE)
+
+# Close Connections to Central Database
+dbDisconnect(elmer_connection)
+```
+
+```{r create_parcel_lookups_datatable, include=FALSE}
+# Create a full parcel file with ID's and then add relevant lookups to it
+p_lookup <- NULL
+w_lk <- NULL
+
+# Geographic Lookups by parcel
+all_transit_file  <- "all_transit"
+county_file  <- "county"
+minority_file <- "minority"
+city_file  <- "city"
+poverty_file <- "poverty"
+tod_network_file <- "tod_network"
+tod_linear_file <- "tod_linear"
+
+# Flags to determine the geographic lookup to add to the parcel results for summary
+parcel_lookups <- list(list("tod_network_id",tod_network_file),list("tod_linear_id",tod_linear_file),list("county_id",county_file),list("minority_id",minority_file),list("poverty_id",poverty_file),list("transit_buffer_id",all_transit_file),list("city_id",city_file))
+
+for (lookups in parcel_lookups) {
+  w_lk <- create_table_from_input("inputs",lookups[[2]],"csv")
+  nms <- c("parcel_id","value")
+  setnames(w_lk,nms)
+  w_lk$category <- lookups[[1]]
+  
+  if (is.null(p_lookup)) {p_lookup <-  w_lk} else {p_lookup  <- rbind(p_lookup,w_lk)}
+}
+
+# Recode the TOD ID's for consistency between the Linear and Network Buffers
+p_lookup$value[p_lookup$value == 0 & p_lookup$category == "tod_network_id"] <- 100
+p_lookup$value[p_lookup$value == 4 & p_lookup$category == "tod_network_id"] <- 101
+p_lookup$value[p_lookup$value == 2 & p_lookup$category == "tod_network_id"] <- 102
+p_lookup$value[p_lookup$value == 5 & p_lookup$category == "tod_network_id"] <- 103
+p_lookup$value[p_lookup$value == 1 & p_lookup$category == "tod_network_id"] <- 104
+p_lookup$value[p_lookup$value == 6 & p_lookup$category == "tod_network_id"] <- 105
+  
+p_lookup$value[p_lookup$value == 0 & p_lookup$category == "tod_linear_id"] <- 100
+p_lookup$value[(p_lookup$value == 1 | p_lookup$value == 2) & p_lookup$category == "tod_linear_id"] <- 101
+p_lookup$value[(p_lookup$value == 3 | p_lookup$value == 4) & p_lookup$category == "tod_linear_id"] <- 102
+p_lookup$value[(p_lookup$value == 5 | p_lookup$value == 6) & p_lookup$category == "tod_linear_id"] <- 103
+p_lookup$value[(p_lookup$value == 7 | p_lookup$value == 8) & p_lookup$category == "tod_linear_id"] <- 104
+p_lookup$value[p_lookup$value == 9 & p_lookup$category == "tod_linear_id"] <- 105
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "AWS-PROD-SQL\\COHO",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Write data to Central Database
+dbWriteTable(elmer_connection, "parcel_geographic_lookups", p_lookup, overwrite=TRUE)
+
+# Close Connections to Central Databas
+dbDisconnect(elmer_connection)
+```
+
+```{r create_hpms_vmt_datable, include = FALSE}
+w_fname <- paste0(getwd(),"/inputs/CountyHPMS.xlsx")
+hpms_vmt <- read_excel(w_fname,sheet = "Summary")
+setDT(hpms_vmt)
+
+# Convert the wide table foramt to long format
+hpms_vmt <- melt(hpms_vmt, id.vars=c("Year"),variable.name = "vmt",variable.factor = FALSE)
+nms <- c("year", "geography","value")
+setnames(hpms_vmt,nms)
+hpms_vmt$category <- "daily vehicle miles traveled"
+
+ints <- c("year","value")
+hpms_vmt[, ints] <- hpms_vmt[, lapply(.SD, as.integer), .SDcols = ints]
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "AWS-PROD-SQL\\COHO",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Write data to Central Database
+dbWriteTable(elmer_connection, "regional_hpms_vmt", hpms_vmt, overwrite=TRUE)
+
+# Close Connections to Central Database
+dbDisconnect(elmer_connection)
+```
+
+```{r create_parcel_outputs_datatable, include = FALSE}
+p_results <- NULL
+analysis_years <- c(2017,2050)
+
+scenarios <- c("tripwire")
+#scenarios <- c("stc","tfg","rug","quickkick","tripwire","firefly")
+
+wrk_measures <-c("parcel_id","households","population","residential_units","employment","non_residential_sqft","building_sqft")
+
+for (w_years in analysis_years) {
+  
+  for (w_scen in scenarios) {
+  
+    w_tbl <- NULL
+    w_tbl <- create_table_from_input(paste0("inputs/",w_scen),paste0("parcel__dataset_table__households_jobs__",w_years),"tab")
+    w_tbl <- w_tbl[,..wrk_measures]
+    w_tbl <- w_tbl[,(wrk_measures):= lapply(.SD, as.integer), .SDcols = wrk_measures]
+    
+    # Flatten by parcel ID
+    w_tbl <- melt(w_tbl, id.vars=c("parcel_id"),variable.factor = FALSE)
+    w_tbl$year <- as.integer(w_years)
+    w_tbl$scenario <- w_scen
+    
+    if (is.null(p_results)) {p_results <-  w_tbl} else {p_results  <- rbind(p_results,w_tbl)}
+
+  }
+}
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "AWS-PROD-SQL\\COHO",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Write data to Central Database
+dbWriteTable(elmer_connection, "v2050_parcel_results", p_results, overwrite=TRUE)
+
+# Close Connections to Central Database
+dbDisconnect(elmer_connection)
+```

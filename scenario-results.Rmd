@@ -1,0 +1,1432 @@
+---
+title: "Technical Analysis for VISION 2050 "
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+VISION 2050 is the shared regional plan for moving toward a sustainable future. It encourages decision-makers to make wise use of existing resources and planned transit investments while achieving the region’s shared vision. VISION 2050 sets forth a pathway that strengthens economic, social, and environmental resiliency, while enhancing the region’s ability to cope with adverse trends such as climate change and unmet housing needs. As the region experiences more growth, VISION 2050 seeks to provide housing, mobility options, and services in more sustainable ways. Most importantly, VISION 2050 is a call to action to meet the needs of a growing population while considering the current needs of residents. VISION 2050 recognizes that clean air, health, life expectancy, and access to jobs and good education can vary dramatically by neighborhood. VISION 2050 works to rectify the inequities of the past, especially for communities of color and people with low incomes.
+
+This document summarizes some of the key technical inputs for the VISION 2050 update. For more information on VISION 2050, please refer to https://www.psrc.org/vision.
+
+
+```{r general_setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(purrr)
+library(ggplot2)
+library(data.table)
+library(scales)
+library(plotly)
+library(DT)
+library(leaflet)
+library(sp)
+library(rgdal)
+library(readxl)
+library(foreign)
+library(odbc)
+library(DBI)
+library(knitr)
+library(lubridate)
+library(rgeos)
+library(tidyverse)
+library(zoo)
+
+# Indicator File Directories
+wrk_scenario <- "quick_kick"
+
+# Lists for Analysis
+alternatives <- list(c(wrk_scenario, "LRT", "PPA 65/75"))
+scen_levls <- c(alternatives[[1]][[3]])
+
+analysis_years <- c(2017,2050)
+annualization <- 320
+
+# Central Database name and server
+server_name <- "AWS-PROD-SQL\\COHO"
+database_name <- "Sandbox"
+
+# Hard Coded Inputs for a few values
+ntd_boardings_2014 <- 209000000
+hpms_vmt_2014 <- 82300000
+hours_2050 <- 12735000
+
+# Color Pallete using PSRC Colors
+psrc_colors <- c(
+    "High Capacity Transit" = "#91268F",
+    "Local Transit" = "#F05A28",
+    "Rest of Region" = "#8CC63E",
+    "Lower Share of People of Color" = "#F05A28",
+    "Higher Share of People of Color" = "#8CC63E",
+    "Lower share of Low Income People" = "#8CC63E",
+    "Higher share of Low Income People" = "#00A7A0",
+    "Near Transit" = "#91268F",
+    "Outside Transit Buffer" = "#00A7A0",    
+    "King" = "#91268F",
+    "Kitsap" = "#F05A28",
+    "Pierce" = "#8CC63E",    
+    "Snohomish" = "#00A7A0",
+    "Light Rail" = "#91268F",
+    "Commuter Rail" = "#F05A28",
+    "Ferry" = "#8CC63E",    
+    "Bus Rapid Transit" = "#00A7A0",
+    "Regional Growth Centers" = "#76787A",    
+    "Local Transit" = "#8CC63E",    
+    "Non-HCT" = "#BBBDC0")
+
+# Colors for Bar Charts in MSA Comparison plots
+bar_colors <- c(
+    "0" = "#BBBDC0",
+    "1" = "#F05A28",
+    "2" = "#8CC63E",
+    "3" = "#00A7A0")
+
+base_month <- 5
+area_type <- "statistical area"
+pop_threshold <- 1000000
+
+transit_variables <- c("UPT","VRH")
+
+sister_msa <- c(14460,41860,12060,33100,37980,47900,26420,19100)
+
+# Parcel Capacity File
+cap_file <- "parcel_level_capacity"
+
+# Macroeconimic forecast
+macro <- "2018psrc-macroeconomicforecast"
+
+# Travel Model Outputs
+soundcast <- "soundcast_screening_factors"
+sc_trips <- "trips_by_mode_and_purpose"
+
+# MSA Job Data
+msa_jobs <- "msa_employment_2017"
+
+# Urban Area VMT Data
+uza_vmt <- "uza-vmt"
+
+# Urban Area to MSA Lookup
+uza_ua_codes <- "uza_ua_codes"
+
+# Flag to determine Network or Linear Buffer
+network_buffer <-"yes"
+
+# Geographic Lookups by parcel
+parcel_file <- "parcel_ids"
+all_transit_file  <- "all_transit"
+county_file  <- "county"
+minority_file <- "minority"
+city_file  <- "city"
+poverty_file <- "poverty"
+lrt_stations <- "lrt_stations"
+rgc <- "regional_growth_centers"
+
+if (network_buffer == "yes") {tod_file<-"tod_network"} else {tod_file<-"tod_linear"}
+
+# TOD Types with a consistent definition amongst network buffer types
+tod_types <- list(100,101,102,103,104,105,106,100:106)
+tod_names <- c("Non-HCT","Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Total")
+tod_order <- c("Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Non-HCT","Total")
+
+hct_types <- list(100,101:105,106,100:106)
+hct_names <- c("Rest of Region","High Capacity Transit","Local Transit","Total")
+hct_order <- c("High Capacity Transit","Local Transit","Rest of Region","Total")
+
+transit_buffer_types <- list(0,1,list(0,1))
+transit_names <- c("Outside Transit Buffer", "Near Transit","Total")
+transit_order <- c("Near Transit", "Outside Transit Buffer","Total")
+
+county_types <- list(33,35,53,61,list(33,35,53,61))
+county_names <- c("King", "Kitsap", "Pierce", "Snohomish","Total")
+
+minority_types <- list(1,2,1:2)
+minority_names <- c("Lower Share of People of Color", "Higher Share of People of Color","Total")
+
+poverty_types <- list(1,2,1:2)
+poverty_names <- c("Lower share of Low Income People", "Higher share of Low Income People","Total")
+
+# Flags to determine the geographic lookup to add to the parcel results for summary
+parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"))
+
+county_lookups <- list(list(33,35,53,61,list(33,35,53,61)),list("King", "Kitsap", "Pierce", "Snohomish","Region"))
+
+# Capacity Column Names
+hh_cap_col <- "DUdiff50"
+job_cap_col <- "JOBSPdiff50"
+
+cap_atttributes <- list("pop_capacity","job_capacity")
+lu_atttributes <- list("population","employment")
+cap_atttributes <- list("pop_capacity","job_capacity")
+
+# Create a list of Scenario Names
+scenario_names <- NULL
+  for (files in alternatives) {
+  scenario_names <- c(scenario_names, files[[3]])
+}
+
+# Functions
+sum_table_values <- function(tbl, w_col, w_scen, w_var, w_geo, w_yr) {
+  
+  wrk_tot <- as.integer(tbl[scenario %in% w_scen & variable %in%  w_var & get(w_col) %in% w_geo & year %in% w_yr,sum(value)])
+  return(wrk_tot)
+}
+
+create_table_container <- function(cat_nms, scen_nms, metric_nms) {
+
+  wrk_container = htmltools::withTags(table(
+    class = 'display',
+    thead(
+      tr(
+        th(class = 'dt-center', rowspan = 3, cat_nms)
+      ),
+      tr(
+        lapply(scen_nms, function(x) th(class = 'dt-center', colspan =4, x))
+      ),
+          tr(
+        lapply(rep(metric_nms, length(scen_nms)), function(x) th(class = 'dt-center', x))
+      )
+    )
+  ))
+
+return(wrk_container)
+
+}
+
+create_station_area_tables <- function(tbl, alt_list,current_variable, tbl_view_len, w_type, w_digits) {
+
+  short_names <- NULL
+  for (files in alt_list) {
+    short_names <- c(short_names, files[[1]])
+    }
+
+  scenario_names <- NULL
+  for (files in alt_list) {
+    scenario_names <- c(scenario_names, files[[3]])
+    }
+
+  # Create Variable Specific Table by Scenario
+  wrk_summary <- tbl[variable %in% current_variable]
+  wrk_summary[,variable:=NULL]
+
+  s_tbl <- dcast(wrk_summary, station_name ~ scenario, value.var="results")
+  setcolorder(s_tbl,c("station_name",short_names))
+
+  clean_tbl <- datatable(s_tbl, rownames = FALSE, options = list(pageLength = tbl_view_len, columnDefs = list(list(className = 'dt-center', targets = 1:1))), colnames = c('Station Area', current_variable))
+
+  for (working_column in short_names) {
+    
+    if (w_type == "integer") {
+    clean_tbl <- clean_tbl %>% 
+      formatCurrency(working_column, "", digits = w_digits) %>%
+      formatStyle(working_column,`text-align` = 'center')
+    } else {
+    clean_tbl <- clean_tbl %>% 
+      formatPercentage(working_column,w_digits) %>%
+      formatStyle(working_column,`text-align` = 'center')
+    }
+    
+  }
+
+  return(clean_tbl)
+}
+
+create_rgc_tables <- function(tbl, alt_list,current_variable, tbl_view_len, w_type, w_digits) {
+
+  short_names <- NULL
+  for (files in alt_list) {
+    short_names <- c(short_names, files[[1]])
+    }
+
+  scenario_names <- NULL
+  for (files in alt_list) {
+    scenario_names <- c(scenario_names, files[[3]])
+    }
+
+  # Create Variable Specific Table by Scenario
+  wrk_summary <- tbl[variable %in% current_variable]
+  wrk_summary[,variable:=NULL]
+
+  s_tbl <- dcast(wrk_summary, rgc_name ~ scenario, value.var="results")
+  setcolorder(s_tbl,c("rgc_name",short_names))
+
+  clean_tbl <- datatable(s_tbl, rownames = FALSE, options = list(pageLength = tbl_view_len, columnDefs = list(list(className = 'dt-center', targets = 1:1))), colnames = c('Regional Growth Center', current_variable))
+
+  for (working_column in short_names) {
+    
+    if (w_type == "integer") {
+    clean_tbl <- clean_tbl %>% 
+      formatCurrency(working_column, "", digits = w_digits) %>%
+      formatStyle(working_column,`text-align` = 'center')
+    } else {
+    clean_tbl <- clean_tbl %>% 
+      formatPercentage(working_column,w_digits) %>%
+      formatStyle(working_column,`text-align` = 'center')
+    }
+    
+  }
+
+  return(clean_tbl)
+}
+
+create_table_from_input <- function(fdir,fname,ftype) {
+  w_fname <- paste0(getwd(),"/",fdir,"/",fname,".",ftype)
+  
+  if (ftype == "tab" | ftype == "tsv" ) {wtbl <- read.table(w_fname, sep = '\t',header = TRUE)} 
+  
+  else if (ftype == "dbf") {wtbl <- read.dbf(w_fname)} 
+  
+  else  {wtbl <- read.csv(w_fname)}
+  
+  setDT(wtbl)
+  return(wtbl)
+}
+
+create_bar_charts <- function(current_tbl, current_metric) {
+  wrk_tbl <- current_tbl[variable %in% current_metric]
+  ylimit <- max(wrk_tbl$value)
+  setorder(wrk_tbl,value,value)
+
+  labels <- paste0("<b>","Metro Area: ", "</b>",wrk_tbl$name,
+                 "<b> <br>",paste0(current_metric,": "), "</b>",prettyNum(round(wrk_tbl$value, 0), big.mark = ",")) %>% lapply(htmltools::HTML)
+
+  wrk_chart <- ggplot(wrk_tbl, aes(x = reorder(name,value), y= value, fill = as.factor(plot_id),text=labels)) + 
+  geom_bar(stat = "identity") +
+  theme_void() +
+  scale_y_continuous(labels = comma)+
+  scale_fill_manual(values=bar_colors)+
+  theme(legend.position = "none",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_blank())
+
+  wrk_chart <- ggplotly(wrk_chart, tooltip = c("text"))
+  return(wrk_chart)
+}
+
+calculate_rank <- function(current_tbl, current_metric, current_msa) {
+  wrk_tbl <- current_tbl[variable %in% current_metric]
+  wrk_tbl <- wrk_tbl[order(-value)]
+  wrk_tbl$rank <- NA
+  wrk_tbl$rank <- 1:nrow(wrk_tbl)
+
+  wrk_rank <- wrk_tbl$rank[wrk_tbl$msa_id==current_msa]
+  return(wrk_rank)
+}
+
+create_line_chart <- function(table,xcolumn, ycolumn, Items, ylimit, yname,  xname, wrk_title) {
+  
+  wrk_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn, group= Items, colour= Items)) +
+  geom_line(size=1) +
+  scale_y_continuous(labels = comma, name = yname, limits = c(0, ylimit))+
+  theme_light()+
+  xlab(xname)+
+  ggtitle(wrk_title)+
+  theme(plot.title = element_text(family = "Trebuchet MS", color="#76787A", 
+                              size=16, 
+                              margin = margin(10, 0, 10, 0)),
+    legend.position = "top",
+    legend.title = element_blank(),
+  )
+  
+  wrk_chart <- ggplotly(wrk_chart) %>% 
+    layout(legend = list(orientation = "h", x = 1, xanchor = "center", y = -0.2))
+  
+  return(wrk_chart)
+}
+
+table_from_db <- function(srv_nm,db_nm,tbl_nm) {
+  
+  db_con <- dbConnect(odbc::odbc(),
+    driver = "SQL Server",
+    server = srv_nm,
+    database = db_nm,
+    trusted_connection = "yes"
+  )
+  
+  w_tbl <- dbReadTable(db_con,SQL(tbl_nm))
+  odbc::dbDisconnect(db_con)
+  return(w_tbl)
+}
+
+```
+
+```{r soundcast_information, include=FALSE}
+
+# Create a full trips file
+#trips <- NULL
+#trips <- create_table_from_input(paste0("inputs/",wrk_scenario),sc_trips,"csv")
+
+```
+
+```{r macroforecast_information, include=FALSE}
+
+# Grab Macroforecast Data from Database
+macro_forecast <- table_from_db(server_name,database_name,"Craig.macroeconomic_forecast")
+setDT(macro_forecast)
+
+# Regional Population and Employment from the Regional Macroforecast 
+base_pop <- as.integer(macro_forecast[category %in% "Population" & variable %in% "Total" & year %in% analysis_years[[1]],sum(value)])
+base_jobs <- as.integer(macro_forecast[category %in% "Estimated Total Employment" & variable %in% "Total" & year %in% analysis_years[[1]],sum(value)])
+
+horizon_pop <- as.integer(macro_forecast[category %in% "Population" & variable %in% "Total" & year %in% analysis_years[[2]],sum(value)])
+horizon_jobs <- as.integer(macro_forecast[category %in% "Estimated Total Employment" & variable %in% "Total" & year %in% analysis_years[[2]],sum(value)])
+hh_size <- as.numeric(macro_forecast[category %in% "Households" & variable %in% "Average Household Size" & year %in% analysis_years[[2]],sum(value)])
+
+region_pop_growth <- horizon_pop - base_pop
+region_job_growth <- horizon_jobs - base_jobs
+
+# Create various displays of macroforecast data between the base and horizon years
+working_years <- (analysis_years[[1]]:analysis_years[[2]])
+
+# Total Population
+working_data <- macro_forecast[category %in% "Population" & variable %in% "Total" & year %in% working_years]
+region_pop_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,6000000,"Total Population","Year","Total Regional Population")
+
+# Household Size
+working_data <- macro_forecast[category %in% "Households" & variable %in% "Average Household Size" & year %in% working_years]
+region_hhsize_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,4,"Average Household Size","Year","Average Regional Household Size")
+
+# Growth by Age
+age_groups <- c("0-4","5-19","20-64","65+")
+working_data <- macro_forecast[category %in% "Population" & variable %in% age_groups & year %in% working_years]
+region_age_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,4000000,"Population","Year","Regional Population by Age Group")
+
+# Total Employment
+working_data <- macro_forecast[category %in% "Estimated Total Employment" & variable %in% "Total" & year %in% working_years]
+region_job_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,3500000,"Total Employment","Year","Total Regional Employment")
+
+# Jobs by Sector
+job_sectors <- c("Const/Res","FIRE","Manufacturing","Retail","Services","WTU","Government","Education","Uniformed Military")
+working_data <- macro_forecast[category %in% "Estimated Total Employment" & variable %in% job_sectors & year %in% working_years]
+region_sector_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,2000000,"Total Employment","Year","Regional Employment by Sector")
+```
+
+**Scenario: `r toString(alternatives[[1]][[3]])` (aka `r toString(alternatives[[1]][[1]])`)**
+
+# Regional Macroeconomic Forecast {.tabset .tabset.fade .tabset-pills}
+PSRC forecasts the region's households, persons, jobs, and other economic and demographic variables through the year 2050. The Macroeconomic Forecast is an input to PSRC's land use and travel forecasting and provides the growth assumptions used in our regional growth strategy. It is developed by PSRC with help and review by technical staff from state and local government. PSRC uses an in-house econometric model system whose equations are estimated using over four decades of historical data along with a national macroeconomic forecast and a regional aerospace forecast that are developed separately and combined to create the regional forecast.
+
+## Population
+The four counties that comprise the Central Puget Sound Region were home to `r toString(format(round(as.numeric(base_pop), -2), nsmall=0, big.mark=","))` people in `r toString(analysis_years[[1]])`. By the year `r toString(analysis_years[[2]])`, the population of the region is forecasted to grow to more than `r toString(format(round(as.numeric(horizon_pop), -2), nsmall=0, big.mark=","))`, an increase of `r toString(format(round(as.numeric(region_pop_growth), -2), nsmall=0, big.mark=","))` people. Having `r toString(format(round((region_pop_growth/base_pop)*100,0), nsmall=0))`% more people living, working and playing in the region requires everyone to plan together to ensure that we can accommodate this growth and still maintain the quality of life people enjoy today.
+
+```{r region_pop, echo = FALSE}
+region_pop_chart
+```
+
+```{r pop_age_data, include = FALSE}
+age_results <- NULL
+age_groups <- c("0-4","5-19","20-64","65+","Total")
+age_years <- c(2017,2020,2025,2030,2035,2040,2045,2050)
+wrk_category <- "Population"
+
+sum_age_values <- function(tbl, w_cat, w_var, w_yr) {
+  wrk_tot <- as.integer(tbl[category %in% w_cat & variable %in%  w_var & year %in% w_yr,sum(value)])
+  return(wrk_tot)
+}
+
+# Calcualte the Population by Age Cohort and Analysis Year
+for (wrk_age in age_groups ) {
+  for (years in age_years) {
+    w_tot <- as.integer(macro_forecast[category %in% "Population" & variable %in% "Total" & year %in% years,sum(value)])
+    calc_by_age <- partial(sum_age_values, tbl= macro_forecast, w_cat = wrk_category, w_yr=years)
+    age_results[[paste0(wrk_category,"_",years,"_age_",wrk_age)]] <- map(wrk_age,calc_by_age)
+    age_results[[paste0(wrk_category,"_",years,"_age_",wrk_age,"_Share")]] <- as.integer(age_results[[paste0(wrk_category,"_",years,"_age_",wrk_age)]]) / w_tot
+  }
+}
+
+```
+
+## By Age
+The working age population (ages 20-64) make up a majority of the population throughout the forecast horizon, ranging from `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[1]],"_age_20-64_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[1]])` to `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[2]],"_age_20-64_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[2]])`. The aging of the population is reflected in the growing share of people who are over 65 years of age - from approximately `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[1]],"_age_65+_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[1]])` to `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[2]],"_age_65+_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[2]])`. By the year 2030, there are forecasted to be more people over the age of 65 than school age children making it the second largest age-cohort in the later years of the forecast. The share of population under the age of 5 remains fairly consistent at `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[1]],"_age_0-4_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[1]])` and `r toString(format(round(as.numeric(age_results[[paste0("Population_",analysis_years[[2]],"_age_0-4_Share")]])*100,1),nsmall=0, big.mark=","))`% in `r toString(analysis_years[[2]])`.
+
+```{r pop_age_chart, echo = FALSE}
+region_age_chart
+```
+
+```{r hh_size_data, include = FALSE}
+size_results <- NULL
+size_years <- c(2017,2020,2025,2030,2035,2040,2045,2050)
+size_category <- c("Average Household Size")
+
+sum_hhsize <- function(tbl, w_cat, w_var, w_yr) {
+  wrk_tot <- as.numeric(tbl[category %in% w_cat & variable %in%  w_var & year %in% w_yr,sum(value)])
+  return(wrk_tot)
+}
+
+for (years in age_years) {
+  calc_by_size <- partial(sum_hhsize, tbl= macro_forecast, w_cat = "Households", w_yr=years)
+  size_results[[paste0("hhsize_",years)]] <- map(size_category,calc_by_size)
+}
+
+```
+
+## HH Size
+The average household size has been steadily declining since the 1970's and this trend is forecasted to continue out to `r toString(analysis_years[[2]])`. In `r toString(analysis_years[[1]])`, the average household size was `r toString(format(round(as.numeric(size_results[[paste0("hhsize_",analysis_years[[1]])]]),2),nsmall=0, big.mark=","))`. By `r toString(analysis_years[[2]])`, the average household size is forecasted to decline to `r toString(format(round(as.numeric(size_results[[paste0("hhsize_",analysis_years[[2]])]]),2),nsmall=0, big.mark=","))`. Fewer people living in each household has implications on the number of housing units that will be required to house the same number of people in 2050 and likely the size and type of housing that the future popualtion will desire.
+
+```{r hhsize_chart, echo = FALSE}
+region_hhsize_chart
+```
+
+## Employment
+One reason for the continued growth in population is forecasted economic growth well into the future. In `r toString(analysis_years[[1]])`, there were approximately `r toString(format(round(as.numeric(base_jobs), -2), nsmall=0, big.mark=","))` total jobs in the four county region. By `r toString(analysis_years[[2]])`, the region is expecting another `r toString(format(round(as.numeric(region_job_growth), -2), nsmall=0, big.mark=","))` jobs to be created, an increase of approximately `r toString(format(round((region_job_growth / base_jobs)*100,0), nsmall=0))`%.
+
+```{r region_jobs, echo = FALSE}
+region_job_chart
+```
+
+```{r emp_sector_data, include = FALSE}
+sector_results <- NULL
+sector_years <- c(2017,2020,2025,2030,2035,2040,2045,2050)
+sector_category <- c("Const/Res","FIRE","Manufacturing","Retail","Services","WTU","Government","Education","Uniformed Military")
+
+sum_sectors <- function(tbl, w_cat, w_var, w_yr) {
+  wrk_tot <- as.numeric(tbl[category %in% w_cat & variable %in%  w_var & year %in% w_yr,sum(value)])
+  return(wrk_tot)
+}
+
+for (w_sector in sector_category) {
+  for (years in sector_years) {
+    w_tot <- as.integer(macro_forecast[category %in% "Estimated Total Employment" & variable %in% "Total" & year %in% years,sum(value)])
+    calc_by_sector <- partial(sum_sectors, tbl= macro_forecast, w_cat = "Estimated Total Employment", w_yr=years)
+    sector_results[[paste0(w_sector,"_jobs_",years)]] <- map(w_sector,calc_by_sector)
+    sector_results[[paste0(w_sector,"_share_of_jobs_",years)]] <- as.integer(sector_results[[paste0(w_sector,"_jobs_",years)]]) / w_tot
+  }
+}
+
+```
+
+## By Sector
+Employment growth for the foreast period is greastest within the Services and Retil categories of the economoy between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])`. Services, a broad category that includes firms like Amazon and Microsoft but also lawyers, accountants, consultants and the medical industry accounted for `r toString(format(round(as.numeric(sector_results[[paste0("Services_share_of_jobs_",analysis_years[[1]])]])*100,1),nsmall=0, big.mark=","))`% of all jobs in `r toString(analysis_years[[1]])` and is forecasted to increase its share to `r toString(format(round(as.numeric(sector_results[[paste0("Services_share_of_jobs_",analysis_years[[2]])]])*100,1),nsmall=0, big.mark=","))`% by `r toString(analysis_years[[2]])`
+
+```{r region_sectors, echo = FALSE}
+region_sector_chart
+```
+
+```{r parcel_information, include=FALSE}
+
+# Create a full parcel file with ID's and then add relevant lookups to it
+parcels <- NULL
+w_lk <- NULL
+parcels <- create_table_from_input("inputs",parcel_file,"csv")
+
+for (lookups in parcel_lookups) {
+  w_lk <- create_table_from_input("inputs",lookups[[2]],"csv")
+  parcels <- merge(parcels, w_lk, by = "parcel_id")
+}
+
+# Recode the TOD ID's for consistency between the Linear and Network Buffers
+if (network_buffer == "yes") {
+  parcels$tod_id[parcels$tod_id == 0 ] <- 100
+  parcels$tod_id[parcels$tod_id == 4 ] <- 101
+  parcels$tod_id[parcels$tod_id == 2 ] <- 102
+  parcels$tod_id[parcels$tod_id == 5 ] <- 103
+  parcels$tod_id[parcels$tod_id == 1 ] <- 104
+  parcels$tod_id[parcels$tod_id == 6 ] <- 105
+  
+} else {
+  parcels$tod_id[parcels$tod_id == 0 ] <- 100
+  parcels$tod_id[parcels$tod_id == 1 | parcels$tod_id == 2 ] <- 101
+  parcels$tod_id[parcels$tod_id == 3 | parcels$tod_id == 4 ] <- 102
+  parcels$tod_id[parcels$tod_id == 5 | parcels$tod_id == 6] <- 103
+  parcels$tod_id[parcels$tod_id == 7 | parcels$tod_id == 8 ] <- 104
+  parcels$tod_id[parcels$tod_id == 9 ] <- 105
+}
+  
+# Update TOD Flag to capture Local Transit
+parcels$tod_id[parcels$tod_id == 100 & parcels$transit_buffer_id == 1] <- 106
+
+# Add HCT ID Field
+parcel_lookups <- append(parcel_lookups,list(list("hct_id",tod_file,hct_types,hct_names,hct_order,"High Capacity Transit")))
+parcels$hct_id <- parcels$tod_id
+
+# Add Housing and Job Capacity to Parcel data.table
+w_tbl <- NULL
+cols <- c("parcel_id",hh_cap_col,job_cap_col)
+
+w_tbl <- create_table_from_input("inputs",cap_file,"csv")
+w_tbl <-w_tbl[,..cols]
+upd_nms <- c("parcel_id","hh_capacity","job_capacity")
+setnames(w_tbl,upd_nms)
+w_tbl <- w_tbl[,(upd_nms):= lapply(.SD, as.integer), .SDcols = upd_nms]
+
+# Convert HH Capacity to Population Capacity using the Regional Average Household Size
+w_tbl$pop_capacity <- as.integer(w_tbl$hh_capacity * hh_size)
+w_tbl <- w_tbl[,hh_capacity:=NULL]
+
+# Join the capacity and Geometry Flags
+parcels <- merge(parcels, w_tbl, by = "parcel_id")
+
+# Add Population and Employment to Parcel data.table
+wrk_measures <- c("population","employment")
+
+for (w_years in analysis_years) {
+  w_tbl <- NULL
+  w_tbl <- create_table_from_input(paste0("inputs/",wrk_scenario),paste0("parcel__dataset_table__households_jobs__",w_years),"tab")
+  cols <- c("parcel_id",wrk_measures)
+  w_tbl <- w_tbl[,..cols]
+  w_tbl <- w_tbl[,(cols):= lapply(.SD, as.integer), .SDcols = cols]
+  upd_nms <- c("parcel_id",paste0("population_",w_years),paste0("employment_",w_years))
+  setnames(w_tbl,upd_nms)
+
+  # Join with TOD Flags
+  parcels <- merge(parcels, w_tbl, by = "parcel_id")
+}
+
+```
+
+```{r soundcast_output, include=FALSE}
+
+sc_tbl <- NULL
+sc_outputs <- NULL
+
+# First Pull Out Base Year Data 
+w_fname <- paste0(getwd(),"/inputs/",soundcast,".xlsx")
+sc_outputs <- read_excel(w_fname,sheet = "base_year")
+setDT(sc_outputs)
+  
+annual_boardings <- ntd_boardings_2014
+base_model_boardings <- as.integer(sc_outputs[`Data Item` %in% "Daily Transit Boardings" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)])
+base_model_vmt <- (as.integer(sc_outputs[`Data Item` %in% "Daily VMT" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)]))
+
+# Now Calculate the Scenario Results
+  
+# Open the Travel Model Outputs 
+w_fname <- paste0(getwd(),"/inputs/",soundcast,".xlsx")
+sc_outputs <- read_excel(w_fname,sheet = wrk_scenario)
+setDT(sc_outputs)
+  
+daily_model_boardings <- as.integer(sc_outputs[`Data Item` %in% "Daily Transit Boardings" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)])
+delta_boardings <- (daily_model_boardings - base_model_boardings) * annualization
+annual_boardings <-  ntd_boardings_2014 + delta_boardings
+
+daily_model_vmt <- (as.integer(sc_outputs[`Data Item` %in% "Daily VMT" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)]))
+delta_daily_vmt <- (daily_model_vmt - base_model_vmt)
+daily_vmt <- hpms_vmt_2014 + delta_daily_vmt
+  
+daily_walk_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "Walk",sum(Value)])
+daily_bike_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "Bike",sum(Value)])
+daily_transit_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "Transit",sum(Value)])
+daily_sov_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "SOV",sum(Value)])
+daily_hov2_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "HOV2",sum(Value)])
+daily_hov3_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "HOV3+",sum(Value)])
+
+daily_non_vehicle_trips <- daily_transit_trips + daily_walk_trips + daily_bike_trips
+daily_non_sov_trips <- daily_non_vehicle_trips + daily_hov2_trips + daily_hov3_trips
+  
+daily_vmt_capita <- daily_vmt / horizon_pop
+annual_vmt_capita <- (daily_vmt*annualization) / horizon_pop
+boardings_capita <- annual_boardings / horizon_pop
+
+boardings_2050 <- annual_boardings
+vmt_2050 <- daily_vmt
+
+```
+
+```{r msa_comparion, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "AWS-PROD-SQL\\COHO",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Urban Area and UZA lookup file
+to_open <- paste0(getwd(),"/inputs/uza_ua_codes.csv")
+msa <- read.csv(to_open)
+setDT(msa)
+setnames(msa,c("ua_id","uza_id","uza_name","msa_id","msa_name"))
+uza_msa <- msa[,c("uza_id","msa_id")]
+
+# Table Name from the Central Database
+ntd_data <- "Craig.ntd_monthly_transit_data"
+msa_data <- "Craig.national_msa_population"
+fips_codes <- "Craig.fips_codes"
+ua_pop <- "Craig.national_urban_area_population"
+
+# Load the Tables from the database and then close the connection
+transit <- dbReadTable(elmer_connection,SQL(ntd_data))
+population <- dbReadTable(elmer_connection,SQL(msa_data))
+fips <- dbReadTable(elmer_connection,SQL(fips_codes))
+ua <- dbReadTable(elmer_connection,SQL(ua_pop))
+
+odbc::dbDisconnect(elmer_connection)
+
+# Ensure all are of data.table types
+setDT(transit)
+setDT(population)
+setDT(fips)
+setDT(ua)
+
+# Get Job Data 
+jobs <- create_table_from_input("inputs",msa_jobs,"csv")
+setDT(jobs)
+nms <- c("geoid","geo_name","jobs")
+setnames(jobs,nms)
+
+# Get VMT Data 
+vmt <- create_table_from_input("inputs",uza_vmt,"csv")
+setDT(vmt)
+nms <- c("geoid","uza_id","name","year","attribute","DVMT")
+setnames(vmt,nms)
+
+# Consolidate based on base year and remove columns
+vmt <- vmt[year %in% analysis_years[[1]] & attribute %in% c("total daily vehicle miles traveled")]
+col_keep <- c("geoid","name","DVMT")
+vmt <- vmt[,..col_keep]
+
+# Clean Urban Area population to join with VMT Data
+ua <- ua[year %in% analysis_years[[1]]]
+ua <- ua[,geoid:=as.integer(geoid)]
+col_keep <- c("geoid","value")
+ua <- ua[,..col_keep]
+nms <- c("geoid","ua_pop")
+setnames(ua,nms)
+
+# Add Urban Area Population to VMT Data
+vmt <- merge(vmt, ua, by = "geoid")
+
+# Get UA to MSA Definition and join to VMT Data
+ua_to_msa <- create_table_from_input("inputs",uza_ua_codes,"csv")
+setDT(ua_to_msa)
+nms <- c("geoid","uza_id","uza_name","msa_id","msa_name")
+setnames(ua_to_msa,nms)
+col_keep <- c("geoid","msa_id","msa_name")
+ua_to_msa <- ua_to_msa[,..col_keep]
+vmt <- merge(vmt, ua_to_msa, by = "geoid")
+
+# Trim down VMT data by MSA with Seattle and Bremerton Combined
+col_keep <- c("msa_id","DVMT","ua_pop")
+vmt <- vmt[,..col_keep]
+vmt$msa_id[vmt$msa_id == 14740] <- 42660
+
+# Combine VMT data by MSA ID
+vmt_msa <- aggregate(vmt, by=list(vmt$msa_id),FUN=sum)
+setDT(vmt_msa)
+nms <- c("msa_id","msa_2","DVMT","ua_pop")
+setnames(vmt_msa,nms)
+
+# Calculate VMT per Capita based on UA Population
+vmt_msa$VMT_per_Capita <- vmt_msa$DVMT / vmt_msa$ua_pop
+col_keep <- c("msa_id","VMT_per_Capita")
+vmt_msa <- vmt_msa[,..col_keep]
+
+# Calculate Boardings and Hours by Urban Area to join with MSA Population via the Urban Area to MSA IDs
+urban_areas <- NULL
+
+for (vars in transit_variables) {
+  wrk_tbl <- transit[attribute %in% vars]
+
+  # Get Base Year Data and remove Demand Response data
+  wrk_tbl <- wrk_tbl[year(date) %in% analysis_years[[1]]]
+  wrk_tbl <- wrk_tbl[modes != "DR" | modes != "DT"]
+  wrk_tbl[is.na(wrk_tbl)] <- 0
+  col_keep <- c("uza_code","value")
+  wrk_tbl <- wrk_tbl[,..col_keep]
+  nms <- c("uza_id",vars)
+  setnames(wrk_tbl,nms)
+
+  # Aggregate UZA and join with UZA/MSA table
+  wrk_uza <- aggregate(wrk_tbl, by=list(wrk_tbl$uza_id),FUN=sum)
+  setDT(wrk_uza)
+  nms <- c("uza_id","uza_2",vars)
+  setnames(wrk_uza,nms)
+  fcols <- c("uza_id",vars)
+  wrk_uza <- wrk_uza[,..fcols]
+  
+  if (is.null(urban_areas)) {urban_areas <- wrk_uza} else {urban_areas <- merge(urban_areas, wrk_uza, by = "uza_id")}
+
+}
+
+# Add MSA ID to Transit Table based on UZA to MSA Lookup and aggregate Bremerton and Seattle MSA
+urban_areas <- merge(urban_areas, uza_msa, by = "uza_id")
+fcols <- c("msa_id",transit_variables)
+urban_areas <- urban_areas[,..fcols]
+urban_areas$msa_id[urban_areas$msa_id == 14740] <- 42660
+
+# Combine Transit data by MSA ID
+msa_results <- aggregate(urban_areas, by=list(urban_areas$msa_id),FUN=sum)
+setDT(msa_results)
+nms <- c("msa_id","msa_2",transit_variables)
+setnames(msa_results,nms)
+col_keep <- c("msa_id",transit_variables)
+msa_results <- msa_results[,..col_keep]
+
+#Add VMT per Capita to the Transit results by MSA
+msa_results <- merge(msa_results, vmt_msa, by = "msa_id")
+
+# Trim down final MSA transit and VMT table
+fcols <- c("msa_id",transit_variables,"VMT_per_Capita")
+msa_results <- msa_results[,..fcols]
+
+# Connect MSA Results with MSA Names
+fips <- fips[category %in% area_type]
+fips <- fips[,c("geoid","name")]
+fips <- fips[,geoid:=as.integer(geoid)]
+msa_results <- merge(msa_results, fips, by.x = "msa_id",by.y="geoid")
+
+# Connect Base Year Population to the Summary Results
+population <- population[year %in% analysis_years[[1]]]
+population <- population[,geoid:=as.integer(geoid)]
+fcols <- c("geoid","value")
+population <- population[,..fcols]
+nms <- c("geoid","population")
+setnames(population,nms)
+
+# Combine Seattle and Bremerton MSA
+population$geoid[population$geoid == 14740] <- 42660
+population_msa <- aggregate(population, by=list(population$geoid),FUN=sum)
+setDT(population_msa)
+nms <- c("geoid","geoid_2","population")
+setnames(population_msa,nms)
+fcols <- c("geoid","population")
+population_msa <- population_msa[,..fcols]
+
+msa_results <- merge(msa_results, population_msa, by.x = "msa_id",by.y="geoid")
+
+# Connect Base Year Jobs to the Summary Results
+fcols <- c("geoid","jobs")
+jobs <- jobs[,..fcols]
+
+jobs$geoid[jobs$geoid == 14740] <- 42660
+jobs_msa <- aggregate(jobs, by=list(jobs$geoid),FUN=sum)
+setDT(jobs_msa)
+nms <- c("geoid","geoid_2","jobs")
+setnames(jobs_msa,nms)
+fcols <- c("geoid","jobs")
+jobs_msa <- jobs_msa[,..fcols]
+
+msa_results <- merge(msa_results, jobs_msa, by.x = "msa_id",by.y="geoid")
+
+# Clean Up MSA Table
+cnames <- c("msa_id","Boardings","Service_Hours","VMT_per_Capita","name","Population","Jobs")
+setnames(msa_results,cnames)
+msa_results$Boardings_per_Capita <- msa_results$Boardings / msa_results$Population
+msa_results$Boardings_per_Hour <- msa_results$Boardings / msa_results$Service_Hours
+
+# Trim down the comparison to places with more than 1m people in the Base Year
+msa_results <- msa_results[Population >= pop_threshold]
+
+# Create Puget Sound Region for 2050 and join to Urban Area Comparison
+v2050 <- as.data.table(list(msa_id=99998, Population=horizon_pop, Jobs=horizon_jobs, Boardings=boardings_2050, Service_Hours=hours_2050, VMT_per_Capita=vmt_2050/horizon_pop, name="Puget Sound Region 2050",Boardings_per_Capita=boardings_2050/horizon_pop,Boardings_per_Hour=boardings_2050/hours_2050))
+msa_results <- rbind(msa_results,v2050)
+
+# Create a plot ID column for cleaner bar charts
+msa_results$plot_id <- 0
+msa_results$plot_id[msa_results$msa_id == 42660] <- 1
+msa_results$plot_id[msa_results$msa_id == 99998] <- 2
+msa_results$plot_id[msa_results$msa_id %in% sister_msa] <- 3
+
+# Flatten Urban Area Table
+msa_tbl <- melt(msa_results, id.vars=c('msa_id','name',"plot_id"))
+
+# Create Bar Charts
+pop_chart <- create_bar_charts(msa_tbl,"Population")
+job_chart <- create_bar_charts(msa_tbl,"Jobs")
+boardings_chart <- create_bar_charts(msa_tbl,"Boardings")
+boardings_per_capita_chart <- create_bar_charts(msa_tbl,"Boardings_per_Capita")
+boardings_per_hour_chart <- create_bar_charts(msa_tbl,"Boardings_per_Hour")
+vmt_per_capita_chart <- create_bar_charts(msa_tbl,"VMT_per_Capita")
+
+# Calulate Rankings by MSA
+pop_rank_today <- calculate_rank(msa_tbl,"Population",42660)
+pop_rank_future <- calculate_rank(msa_tbl,"Population",99998)
+
+job_rank_today <- calculate_rank(msa_tbl,"Jobs",42660)
+job_rank_future <- calculate_rank(msa_tbl,"Jobs",99998)
+
+vmt_rank_today <- calculate_rank(msa_tbl,"VMT_per_Capita",42660)
+vmt_rank_future <- calculate_rank(msa_tbl,"VMT_per_Capita",99998)
+
+boardings_rank_today <- calculate_rank(msa_tbl,"Boardings",42660)
+boardings_rank_future <- calculate_rank(msa_tbl,"Boardings",99998)
+
+boardings_capita_rank_today <- calculate_rank(msa_tbl,"Boardings_per_Capita",42660)
+boardings_capita_rank_future <- calculate_rank(msa_tbl,"Boardings_per_Capita",99998)
+
+```
+
+# Growth for Other Metro Areas {.tabset .tabset.fade .tabset-pills}
+MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
+
+## Population
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(pop_rank_today)` of 53 Metropolitan Statistical Areas (MSA's) in the United States with a population of at least one million people. Other MSA's with similar populations include San Diego, Minneapolis, Detroit and Tampa Bay. When you compare the `r toString(analysis_years[[2]])` forecast of population for the region, the population rank for the Central Puget Sound region would be #`r toString(pop_rank_future)` of 53 places today with a population more similar to places like Atlanta, Miami, Philadelphia and Washington DC.
+
+
+```{r plot_pop_charts, echo = FALSE}
+pop_chart
+
+```
+
+## Employment
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(job_rank_today)` of 53 MSA's for total jobs. Other MSA's with similar numbers of jobs include Detroit, Minneapolis, and Phoenix. When you compare the `r toString(analysis_years[[2]])` forecast of jobs for the region, the rank for the Central Puget Sound region would be #`r toString(job_rank_future)` of 53 places today with job totals more similar to places like Dallas, Houston, Philadelphia and Washington DC.
+
+```{r plot_job_charts, echo = FALSE}
+job_chart
+```
+
+```{r scenario_calualtions, include=FALSE}
+wrk_measures <- c("population","employment")
+results_by_type = NULL
+
+# Calculate and store Capacity by Geographic Lookup in a List
+
+# Sumarize Growth by County
+for (i in seq(1:5)) {
+  
+  cnty_id <- county_lookups[[1]][[i]]
+  cnty_nm <- county_lookups[[2]][[i]]
+
+  for (lookups in parcel_lookups) {
+    w_p <- NULL
+    county_parcels <- parcels[county_id %in% cnty_id]
+
+    # Create long list format for calculations
+    melt_vars <- c("parcel_id",lookups[[1]])
+    meas_vars <- c("pop_capacity","job_capacity")
+    w_p <- melt(county_parcels,id.vars = melt_vars, measure.vars = meas_vars)
+    w_p$scenario <- "all_scenarios"
+    w_p$year <- analysis_years[[1]]
+
+    # Store the capacity results in a list
+    for (wrk_att in cap_atttributes) {
+      calc_by_tod <- partial(sum_table_values, tbl=w_p, w_col = lookups[[1]], w_scen="all_scenarios", w_var=wrk_att, w_yr=analysis_years[[1]])
+      results_by_type[[paste0("all_scenarios_",wrk_att,"_by_",lookups[[1]],"_",cnty_nm)]] <- map(lookups[[3]],calc_by_tod)
+      }    
+  }
+}
+
+# Calculate and store Measures by Geography Type and County
+for (i in seq(1:5)) {
+  
+  cnty_id <- county_lookups[[1]][[i]]
+  cnty_nm <- county_lookups[[2]][[i]]
+
+  for (lookups in parcel_lookups) {
+  
+    for (w_year in analysis_years){
+      w_p <- NULL
+      county_parcels <- parcels[county_id %in% cnty_id]
+  
+      # Create long list format for calculations
+      melt_vars <- c("parcel_id",lookups[[1]])
+      meas_vars <- c(paste0("population_",w_year),paste0("employment_",w_year))
+      w_p <- melt(county_parcels,id.vars = melt_vars, measure.vars = meas_vars)
+      w_p$scenario <- alternatives[[1]][[2]]
+      w_p$year <- w_year
+  
+      # Calculate the Total People and Jobs by Geography Type
+      for (lu in lu_atttributes) {
+        calc_by_tod <- partial(sum_table_values, tbl=w_p, w_col = lookups[[1]], w_scen=alternatives[[1]][[2]], w_var=paste0(lu,"_",w_year), w_yr=w_year)
+        results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_",lu,"_by_",lookups[[1]],"_",cnty_nm)]] <- map(lookups[[3]],calc_by_tod)
+      } 
+    }
+  }
+}
+
+# Calculate various differences from the base year by Geography Type and County
+for (i in seq(1:5)) {
+  
+  cnty_id <- county_lookups[[1]][[i]]
+  cnty_nm <- county_lookups[[2]][[i]]
+
+  for (lookups in parcel_lookups) {
+  
+    # Calculate the Total Population Change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[2]],"_",wrk_measures[[1]],"_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[1]],"_by_",lookups[[1]],"_",cnty_nm)]])
+  
+    # Calculate the Total Job Change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[2]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]])
+
+    # Calculate the % Pop Change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[1]],"_by_",lookups[[1]],"_",cnty_nm)]])
+  
+    # Calculate the % Job Change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]])   
+    
+    # Calculate the Share of the Total Change from the Base Year
+    total_hh_pop_chg <- last(unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]]))
+    total_hh_job_chg <- last(unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]]))
+  
+    results_by_type[[paste0(alternatives[[1]][[2]],"_share_pop_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]], total_hh_pop_chg)
+  
+    results_by_type[[paste0(alternatives[[1]][[2]],"_share_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]], total_hh_job_chg)  
+  
+    # Calculate the Remaining Capacity
+    results_by_type[[paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0("all_scenarios_pop_capacity_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]])
+  
+    results_by_type[[paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0("all_scenarios_job_capacity_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]])  
+
+    # Calculate the Share of Capacity Used
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0("all_scenarios_pop_capacity_by_",lookups[[1]],"_",cnty_nm)]])
+  
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0("all_scenarios_job_capacity_by_",lookups[[1]],"_",cnty_nm)]])     
+
+  }
+}
+
+```
+
+# Growth by Area Type {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The charts below illustrate the share of population growth for the `r toString(scenario_names)` scenario summarized in this document.
+
+
+```{r growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,6)
+
+for (i in my_list) {
+  summary_geo <- "Region"
+  header_names <- parcel_lookups[[i]][[6]]
+  wrk_id <- parcel_lookups[[i]][[1]]
+  wrk_nms <- parcel_lookups[[i]][[4]]
+  wrk_ord <- parcel_lookups[[i]][[5]]
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Delta","Percent")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+
+# Share of Growth by Area Type {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The charts below illustrate the share of population growth for the `r toString(scenario_names)` scenario summarized in this document.
+
+
+```{r growth-pie-charts, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,6)
+
+for (i in my_list) {
+  summary_geo <- "Region"
+  header_names <- parcel_lookups[[i]][[6]]
+  wrk_id <- parcel_lookups[[i]][[1]]
+  wrk_nms <- parcel_lookups[[i]][[4]]
+  wrk_ord <- parcel_lookups[[i]][[5]]
+  out <- c(out, knitr::knit_child("pie-charts-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Growth by Transit Type {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r county-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'tod_id'
+  wrk_nms <- tod_names
+  wrk_ord <- tod_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Delta","Percent")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Share of Growth by Transit Type {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r county-growth-pie-charts, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'tod_id'
+  wrk_nms <- tod_names
+  wrk_ord <- tod_order
+  out <- c(out, knitr::knit_child("pie-charts-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Capacity by Transit Type {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r county-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'tod_id'
+  wrk_nms <- tod_names
+  wrk_ord <- tod_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Vehicle Miles Traveled per Capita
+Miles driven per person have been declining in the Central Puget Sound Region for the past 20 years. VMT per day peaked in the late 1990's around 24 miles driven per person per day and has been fairly steady for the past 10 years at around 21 miles per person per day. Changes in land use and a continued diversification of travel options are key drivers behind a shortening of VMT per person,
+
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(vmt_rank_today)` of 53 MSA's for miles driven per person per day. Other MSA's with similar levels of daily VMT per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of miles driven for the region, the rank for the Central Puget Sound region would be #`r toString(vmt_rank_future)` of 53 places today with only New York City having fewer miles driven per day.
+
+```{r, plot_vmt_outputs, echo=FALSE}
+vmt_per_capita_chart
+```
+
+# Transit Boardings
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(boardings_rank_today)` of 53 MSA's for transit boardings . Other MSA's with similar levels of Boardings per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of transit boardings for the region, the rank for the Central Puget Sound region would be #`r toString(boardings_rank_future)` of 53 places today with only New York City having more boardings per day.
+
+```{r, plot_boardings_outputs, echo=FALSE}
+boardings_chart
+```
+
+# Transit Boardings per Capita
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(boardings_capita_rank_today)` of 53 MSA's for boardings per person per year. Other MSA's with similar levels of Boardings per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of boardings per person for the region, the rank for the Central Puget Sound region would be #`r toString(boardings_capita_rank_future)` of 53 places today with only New York City having more boardings per day.
+
+```{r, plot_boardings_capita_outputs, echo=FALSE}
+boardings_per_capita_chart
+```
+
+```{r lrt_stations_setup, include=FALSE}
+
+# Clear out temporary data.tables
+station_parcels <- NULL
+wrk_measures <- c("Population","Employment")
+
+lrt_station_lookup <- create_table_from_input("inputs",lrt_stations,"csv")
+wrk_parcels <- merge(parcels, lrt_station_lookup, by = "parcel_id")
+wrk_parcels <- wrk_parcels[,c('parcel_id','station_name','population_2017','population_2050','employment_2017','employment_2050')]
+
+# Calculate and store Measures by Geography Type
+  
+for (w_year in analysis_years){
+  w_p <- NULL
+  
+  # Trim down to only have year of interest data
+  orig_cols <- c("parcel_id",'station_name',paste0("population_",w_year),paste0("employment_",w_year))
+  w_p <- wrk_parcels[,..orig_cols]
+  nms <- c("parcel_id",'station_name','Population','Employment')
+  setnames(w_p,nms)
+  
+  # Create long list format for calculations
+  melt_vars <- c("parcel_id",'station_name')
+  meas_vars <- c("Population","Employment")
+  
+  w_p <- melt(w_p,id.vars = melt_vars, measure.vars = meas_vars)
+  w_p$scenario <- alternatives[[1]][[1]]
+  w_p$year <- w_year
+  
+  if (is.null(station_parcels)) {station_parcels <- w_p} else {station_parcels <- rbind(station_parcels,w_p)}
+}
+    
+# Create Station Area Summary
+station_summary <- station_parcels[,.(results = sum(value)),by=.(station_name,variable,scenario,year)]
+station_summary <- station_summary[station_name != ""]
+
+# Calculate the Population and Employment Growth from the Base Year by Scenario
+for (files in alternatives) {
+  
+  base_att <- NULL
+  scen_att <- NULL
+  scen_delta <- NULL
+
+  for (lu_att in wrk_measures) {
+    wrk_scen <- alternatives[[1]][[1]]
+    
+    # Get Base Year Values by Station Area
+    base_att <- station_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[1]]]
+    base_att <- base_att[,c("station_name","results")]
+    setnames(base_att,c("station_name","base_year"))  
+
+    # Get Scenario Values by Station Area
+    scen_att <- station_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[2]]]
+    scen_att <- scen_att[,c("station_name","results")]
+    setnames(scen_att,c("station_name","future_year"))
+
+    # Merge and Calculate the difference
+    scen_delta <- merge(base_att, scen_att, by = "station_name")
+    scen_delta$results <- scen_delta$future_year - scen_delta$base_year
+    scen_delta$variable <- paste0(lu_att," Growth")
+    scen_delta$scenario <- wrk_scen
+    scen_delta$year <- analysis_years[[2]]
+    scen_delta <- scen_delta[,c("station_name","variable","scenario","results","year")]
+
+    # Merge and Calculate the percentage difference
+    scen_percent <- merge(base_att, scen_att, by = "station_name")
+    scen_percent$results <- (scen_percent$future_year - scen_percent$base_year) / scen_percent$base_year
+    scen_percent[is.na(scen_percent)] <- 0
+    scen_percent$variable <- paste0(lu_att," % Change")
+    scen_percent$scenario <- wrk_scen
+    scen_percent$year <- analysis_years[[2]]
+    scen_percent <- scen_percent[,c("station_name","variable","scenario","results","year")]
+
+    # Merge and Calculate the share ofr the total difference
+    scen_share <- merge(base_att, scen_att, by = "station_name")
+    total_growth <- as.integer(colSums(scen_share[,'future_year']) - colSums(scen_share[,'base_year']))
+    scen_share$results <- (scen_share$future_year - scen_share$base_year) / total_growth
+    scen_share[is.na(scen_share)] <- 0
+    scen_share$variable <- paste0(lu_att," Share of Change")
+    scen_share$scenario <- wrk_scen
+    scen_share$year <- analysis_years[[2]]
+    scen_share <- scen_share[,c("station_name","variable","scenario","results","year")]
+        
+    station_summary <- rbind(station_summary,scen_delta)
+    station_summary <- rbind(station_summary,scen_percent)
+    station_summary <- rbind(station_summary,scen_share)
+  }
+}  
+
+```
+
+# Light Rail Station Areas {.tabset .tabset.fade .tabset-pills}
+By the year `r toString(analysis_years[[2]])`, light rail will connect a majority of Regional Growth Centers with over 100 different stations .  The `r toString(alternatives[[1]][[1]])` scenario directs approximately `r toString(format(round(as.numeric(results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_tod_id_Region")]][[2]]),0), nsmall=0, big.mark=","))` new people within 1/2 mile of these stations (`r toString(format(round(as.numeric(results_by_type[[paste0(alternatives[[1]][[2]],"_share_pop_change_by_tod_id_Region")]][[2]]*100),0), nsmall=0, big.mark=","))`% of total population growth) and `r toString(format(round(as.numeric(results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_tod_id_Region")]][[2]]),0), nsmall=0, big.mark=","))` new jobs within 1/2 mile of these stations (`r toString(format(round(as.numeric(results_by_type[[paste0(alternatives[[1]][[2]],"_share_job_change_by_tod_id_Region")]][[2]]*100),0), nsmall=0, big.mark=","))`% of total job growth).
+
+## Total Growth around LRT Stations {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r lrt-total-station-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population Growth","Employment Growth")
+num_typ <- "integer"
+num_dig <- 0
+bins <- c(0,2000,8000,32000,72000,128000,200000)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Percent Change around LRT Stations {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r lrt-percent-station-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population % Change","Employment % Change")
+num_typ <- "percentage"
+num_dig <- 0
+bins <- c(0,25,50,75,100,150,500,1000,2500)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Share of Growth around LRT Stations {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r lrt-share-station-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population Share of Change","Employment Share of Change")
+num_typ <- "percentage"
+num_dig <- 1
+bins <- c(0,2,5,10,15,20,25)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+```{r rgc_setup, include=FALSE}
+
+# Clear out temporary data.tables
+rgc_parcels <- NULL
+wrk_measures <- c("Population","Employment")
+
+rgc_lookup <- create_table_from_input("inputs",rgc,"csv")
+wrk_parcels <- merge(parcels, rgc_lookup, by = "parcel_id")
+wrk_parcels <- wrk_parcels[,c('parcel_id','rgc_name','population_2017','population_2050','employment_2017','employment_2050')]
+
+# Calculate and store Measures by Geography Type
+  
+for (w_year in analysis_years){
+  w_p <- NULL
+  
+  # Trim down to only have year of interest data
+  orig_cols <- c("parcel_id",'rgc_name',paste0("population_",w_year),paste0("employment_",w_year))
+  w_p <- wrk_parcels[,..orig_cols]
+  nms <- c("parcel_id",'rgc_name','Population','Employment')
+  setnames(w_p,nms)
+  
+  # Create long list format for calculations
+  melt_vars <- c("parcel_id",'rgc_name')
+  meas_vars <- c("Population","Employment")
+  
+  w_p <- melt(w_p,id.vars = melt_vars, measure.vars = meas_vars)
+  w_p$scenario <- alternatives[[1]][[1]]
+  w_p$year <- w_year
+  
+  if (is.null(rgc_parcels)) {rgc_parcels <- w_p} else {rgc_parcels <- rbind(rgc_parcels,w_p)}
+}
+    
+# Create RGC Summary
+rgc_summary <- rgc_parcels[,.(results = sum(value)),by=.(rgc_name,variable,scenario,year)]
+rgc_summary <- rgc_summary[rgc_name != ""]
+
+# Calculate the Population and Employment Growth from the Base Year by Scenario
+for (files in alternatives) {
+  
+  base_att <- NULL
+  scen_att <- NULL
+  scen_delta <- NULL
+
+  for (lu_att in wrk_measures) {
+    wrk_scen <- alternatives[[1]][[1]]
+    
+    # Get Base Year Values by Station Area
+    base_att <- rgc_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[1]]]
+    base_att <- base_att[,c("rgc_name","results")]
+    setnames(base_att,c("rgc_name","base_year"))  
+
+    # Get Scenario Values by Station Area
+    scen_att <- rgc_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[2]]]
+    scen_att <- scen_att[,c("rgc_name","results")]
+    setnames(scen_att,c("rgc_name","future_year"))
+
+    # Merge and Calculate the difference
+    scen_delta <- merge(base_att, scen_att, by = "rgc_name")
+    scen_delta$results <- scen_delta$future_year - scen_delta$base_year
+    scen_delta$variable <- paste0(lu_att," Growth")
+    scen_delta$scenario <- wrk_scen
+    scen_delta$year <- analysis_years[[2]]
+    scen_delta <- scen_delta[,c("rgc_name","variable","scenario","results","year")]
+
+    # Merge and Calculate the percentage difference
+    scen_percent <- merge(base_att, scen_att, by = "rgc_name")
+    scen_percent$results <- (scen_percent$future_year - scen_percent$base_year) / scen_percent$base_year
+    scen_percent$results[is.infinite(scen_percent$results)] <- 999
+    scen_percent$variable <- paste0(lu_att," % Change")
+    scen_percent$scenario <- wrk_scen
+    scen_percent$year <- analysis_years[[2]]
+    scen_percent <- scen_percent[,c("rgc_name","variable","scenario","results","year")]
+
+    # Merge and Calculate the share of the total difference
+    scen_share <- merge(base_att, scen_att, by = "rgc_name")
+    total_growth <- as.integer(colSums(scen_share[,'future_year']) - colSums(scen_share[,'base_year']))
+    scen_share$results <- (scen_share$future_year - scen_share$base_year) / total_growth
+    scen_share[is.na(scen_share)] <- 0
+    scen_share$variable <- paste0(lu_att," Share of Change")
+    scen_share$scenario <- wrk_scen
+    scen_share$year <- analysis_years[[2]]
+    scen_share <- scen_share[,c("rgc_name","variable","scenario","results","year")]
+        
+    rgc_summary <- rbind(rgc_summary,scen_delta)
+    rgc_summary <- rbind(rgc_summary,scen_percent)
+    rgc_summary <- rbind(rgc_summary,scen_share)
+  }
+}  
+
+```
+
+# Regional Growth Centers {.tabset .tabset.fade .tabset-pills}
+xxx
+
+## Total Growth within RGC's {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r rgc-total-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population Growth","Employment Growth")
+num_typ <- "integer"
+num_dig <- 0
+bins <- c(0,2000,8000,32000,72000,128000,200000)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Percent Change within RGC's {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r rgc-percent-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population % Change","Employment % Change")
+num_typ <- "percentage"
+num_dig <- 0
+bins <- c(0,25,50,75,100,150,500,1000,2500)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Share of Growth within RGC's {.tabset .tabset.fade .tabset-pills}
+...
+
+```{r rgc-share-plots, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+my_list <- list(1,2)
+metrics <- c("Population Share of Change","Employment Share of Change")
+num_typ <- "percentage"
+num_dig <- 1
+bins <- c(0,2,5,10,15,20,25)
+
+for (i in seq_along(my_list)) {
+  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`

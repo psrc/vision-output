@@ -1,0 +1,45 @@
+---
+title: "pie-charts-by-type-child"
+output: html_document
+---
+```{r, include=FALSE}
+
+wrk_tbl <- NULL
+numeric_columns <- c('People','Jobs')
+
+wrk_tbl <- data.table(Area=wrk_nms,People=unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_share_pop_change_by_",wrk_id,"_",summary_geo)]]),Jobs=unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_share_job_change_by_",wrk_id,"_",summary_geo)]]))
+
+wrk_tbl$Area <- factor(wrk_tbl$Area, levels = wrk_ord)
+wrk_tbl <- wrk_tbl[order(Area),]
+
+# Create Pie Charts by first making a long format table
+var_levels <- c("People","Jobs")
+plot_tbl <- melt(wrk_tbl, id.vars=c('Area'))
+
+# Set order of Type to Display
+plot_tbl$Area <- factor(plot_tbl$Area, levels = wrk_ord)
+plot_tbl <- plot_tbl[order(Area),]
+
+plot_tbl$variable <- factor(plot_tbl$variable, levels = var_levels)
+plot_tbl <- plot_tbl[order(variable),]
+
+# Remove Region Total from the Table
+plot_tbl <- subset(plot_tbl, !(Area %in% "Total"))
+
+wrk_pie <- ggplot(plot_tbl, aes(x = "", y = value, fill = Area)) +
+  geom_bar(width = 1, stat = "identity", color = "white") +
+  coord_polar("y", start = 0)+
+  geom_text(aes(label = paste0(round(value*100), "%")), color = "white", position = position_stack(vjust = 0.5))+
+  scale_fill_manual(values = psrc_colors) +
+  theme_void()+
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+  
+wrk_pie <- wrk_pie + facet_grid(cols = vars(variable))
+
+```
+
+## `r header_names`
+
+```{r, echo=FALSE, results="asis"}
+wrk_pie
+```
