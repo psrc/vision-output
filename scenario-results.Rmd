@@ -212,6 +212,49 @@ sum_table_values <- function(tbl, w_col, w_scen, w_var, w_geo, w_yr) {
   return(wrk_tot)
 }
 
+create_area_map <- function(geo_areas, w_directory) {
+
+  # First start Base Map
+  w_map <- leaflet() %>% addProviderTiles(providers$CartoDB.Positron, group="Base Map")
+  list_of_layers <- NULL
+
+  # Loop Over the List of Areas to Map and add as layers to the map
+  for (areas in geo_areas) {
+    w.shape <- readOGR(dsn=w_directory,layer=areas[[2]])
+    w_map <- w_map %>%
+        addPolygons(data=w.shape,
+                fillColor = areas[[1]],
+                color = areas[[1]],
+                fillOpacity = 0.7,
+                weight=1,
+                group=areas[[3]])
+    if(is.null(list_of_layers)) {list_of_layers <- list(areas[[3]])} else {list_of_layers <- append(list_of_layers,areas[[3]])}
+  }
+
+  # Now Add Layer Controls and Easy Buttons
+  w_map <- w_map %>%
+    addLayersControl(baseGroups = c("Base Map"),
+                    overlayGroups = list_of_layers,
+                    options = layersControlOptions(collapsed = FALSE)) %>%
+    addEasyButton(easyButton(
+      icon="fa-anchor", title="Bremerton",
+      onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-amazon", title="Cross-Lake",
+      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-plane", title="Everett",
+      onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-glass", title="Tacoma",
+      onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-globe", title="Region",
+      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+  
+  return(w_map)
+}
+
 create_table_container <- function(cat_nms, scen_nms, metric_nms) {
 
   wrk_container = htmltools::withTags(table(
@@ -1071,81 +1114,9 @@ for (i in my_list) {
 ## Transit Area Map
 
 ```{r transit-area-map-setup, include=FALSE}
-
-# Colors for Area Maps
-lrt_id <- "101"
-crt_id <- "102"
-ferry_id <- "103"
-brt_id <- "104"
-rgc_id <- "105"
-
-working_colors <- c(
-    "100" = "#BBBDC0",
-    "101" = "#F05A28",
-    "102" = "#8CC63E",
-    "103" = "#00A7A0",
-    "104" = "#91268F",
-    "105" = "#76787A",
-    "106" = "#00FFFF")
-
-# Read the Area Shapefile into memory
-lrt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_lrt')
-crt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_crt')
-ferry.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_pof')
-brt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_brt')
-rgc.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_rgc')
-
-working_map <- leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
-  addPolygons(data=lrt.shape,
-              fillColor = working_colors[[lrt_id]],
-              color = working_colors[[lrt_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Light Rail")%>%
-  addPolygons(data=crt.shape,
-              fillColor = working_colors[[crt_id]],
-              color = working_colors[[crt_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Commuter Rail")%>%
-  addPolygons(data=ferry.shape,
-              fillColor = working_colors[[ferry_id]],
-              color = working_colors[[ferry_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Passenger Only Ferry")%>%
-  addPolygons(data=brt.shape,
-              fillColor = working_colors[[brt_id]],
-              color = working_colors[[brt_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Bus Rapid Transit")%>%
-  addPolygons(data=rgc.shape,
-              fillColor = working_colors[[rgc_id]],
-              color = working_colors[[rgc_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Regional Growth Centers")%>%
-  addLayersControl(baseGroups = c("Base Map"),
-                   overlayGroups = c("Light Rail","Commuter Rail","Passenger Only Ferry","Bus Rapid Transit","Regional Growth Centers"),
-                   options = layersControlOptions(collapsed = FALSE)) %>%
-  addEasyButton(easyButton(
-    icon="fa-anchor", title="Bremerton",
-    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-amazon", title="Cross-Lake",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-plane", title="Everett",
-    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-glass", title="Tacoma",
-    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-globe", title="Region",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
-
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list("#F05A28",'tod_id_lrt',"Light Rail"),list("#8CC63E",'tod_id_crt',"Commuter Rail"),list("#00A7A0",'tod_id_pof',"Passenger Only Ferry"),list("#91268F",'tod_id_brt',"Bus Rapid Transit"), list("#76787A",'tod_id_rgc',"Regional Growth Centers"))
+working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
 ```{r, echo=FALSE, results="asis"}
@@ -1215,47 +1186,9 @@ for (i in my_list) {
 ## HCT Area Map
 
 ```{r hct-area-map-setup, include=FALSE}
-
-# Colors for Area Maps
-no_transit <- 0
-hct_id <- "1"
-local_id <- "2"
-
-working_colors <- c(
-    "0" = "#BBBDC0",
-    "1" = "#F05A28",
-    "2" = "#8CC63E")
-
-# Read the Area Shapefile into memory
-hct.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='hct_id_hct')
-
-working_map <- leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
-  addPolygons(data=hct.shape,
-              fillColor = working_colors[[hct_id]],
-              color = working_colors[[hct_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="High Capacity Transit")%>%
-  addLayersControl(baseGroups = c("Base Map"),
-                   overlayGroups = c("High Capacity Transit"),
-                   options = layersControlOptions(collapsed = FALSE)) %>%
-  addEasyButton(easyButton(
-    icon="fa-anchor", title="Bremerton",
-    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-amazon", title="Cross-Lake",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-plane", title="Everett",
-    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-glass", title="Tacoma",
-    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-globe", title="Region",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
-
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list("#F05A28",'hct_id_hct',"High Capacity Transit"))
+working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
 ```{r, echo=FALSE, results="asis"}
@@ -1326,82 +1259,9 @@ for (i in my_list) {
 ## Regional Geography Map
 
 ```{r regeo-area-map-setup, include=FALSE}
-
-# Colors for Area Maps
-metro_id <- "1"
-core_id <- "2"
-hct_id <- "3"
-cities_id <- "4"
-uu_id <- "5"
-rural_id <- "6"
-
-working_colors <- c(
-    "1" = "#F05A28",
-    "2" = "#8CC63E",
-    "3" = "#00A7A0",
-    "4" = "#91268F",
-    "5" = "#76787A",
-    "6" = "#00FFFF")
-
-# Read the Area Shapefile into memory
-metro.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_metro')
-core.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_core')
-hct.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_hct')
-cities.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_cities')
-uu.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_uu')
-#rural.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_rural')
-
-working_map <- leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
-  addPolygons(data=metro.shape,
-              fillColor = working_colors[[metro_id]],
-              color = working_colors[[metro_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Metro Cities")%>%
-  addPolygons(data=core.shape,
-              fillColor = working_colors[[core_id]],
-              color = working_colors[[core_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Core Cities")%>%
-  addPolygons(data=hct.shape,
-              fillColor = working_colors[[hct_id]],
-              color = working_colors[[hct_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="High Capacity Transit Cities")%>%
-  addPolygons(data=cities.shape,
-              fillColor = working_colors[[cities_id]],
-              color = working_colors[[cities_id]],
-              fillOpacity = 0.7,
-              weight=0,
-              group="Cities & Towns")%>%
-  addPolygons(data=uu.shape,
-              fillColor = working_colors[[uu_id]],
-              color = working_colors[[uu_id]],
-              fillOpacity = 0.7,
-              weight=1,
-              group="Urban Unicorporated")%>%
-  addLayersControl(baseGroups = c("Base Map"),
-                   overlayGroups = c("Metro Cities","Core Cities","High Capacity Transit Cities","Cities & Towns","Urban Unicorporated"),
-                   options = layersControlOptions(collapsed = FALSE)) %>%
-  addEasyButton(easyButton(
-    icon="fa-anchor", title="Bremerton",
-    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-amazon", title="Cross-Lake",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-plane", title="Everett",
-    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-glass", title="Tacoma",
-    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
-  addEasyButton(easyButton(
-    icon="fa-globe", title="Region",
-    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
-
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list("#F05A28",'rgeo_id_metro',"Metro Cities"),list("#8CC63E",'rgeo_id_core',"Core Cities"),list("#00A7A0",'rgeo_id_hct',"High Capacity Transit Cities"),list("#91268F",'rgeo_id_cities',"Cities & Towns"), list("#76787A",'rgeo_id_uu',"Urban Unicorporated"))
+working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
 ```{r, echo=FALSE, results="asis"}
