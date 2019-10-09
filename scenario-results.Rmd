@@ -36,18 +36,32 @@ library(tidyverse)
 library(zoo)
 
 # Indicator File Directories
-wrk_scenario <- "quick_kick"
-
-# Lists for Analysis
-alternatives <- list(c(wrk_scenario, "LRT", "PPA 65/75"))
-scen_levls <- c(alternatives[[1]][[3]])
+wrk_scenario <- "Quick-kick"
+results_folder <- ":/vision2050/opusgit/urbansim_data/data/psrc_parcel/runs/"
+us_nm <- Sys.getenv("USERNAME")
 
 analysis_years <- c(2017,2050)
 annualization <- 320
 
+# Flag to determine Network or Linear Buffer and Regional Geography Use
+network_buffer <- "yes"
+regional_geography_used <- "proposed"
+
 # Central Database name and server
 server_name <- "AWS-PROD-SQL\\COHO"
 database_name <- "Sandbox"
+
+# Model Run Tracking file on TEAMS
+run_track_file <- paste0('C:/Users/',us_nm,'/Puget Sound Regional Council/v2050 scenarios - Modeling and run tracking/model_run_tracking.xlsx')
+model_tracker <- read_excel(run_track_file,sheet = "Runs by Key Inputs",skip=2)
+setDT(model_tracker)
+
+# Set folder location for parcel file indicator
+current_run <- model_tracker[`Run Name Alias` %in% wrk_scenario]
+drive <- substr(as.character(current_run$Indicators), start=1,stop=1)
+mdl_srv <- paste0("awsmodel",as.character(current_run$`Run On:`))
+mdl_run <- as.character(current_run$`UrbanSim Run ID and Time Stamp`)
+parcel_file_path <- paste0(drive,results_folder,mdl_srv,"/",mdl_run,"/indicators/")
 
 # Hard Coded Inputs for a few values
 ntd_boardings_2014 <- 209000000
@@ -75,7 +89,14 @@ psrc_colors <- c(
     "Bus Rapid Transit" = "#00A7A0",
     "Regional Growth Centers" = "#76787A",    
     "Local Transit" = "#8CC63E",    
-    "Non-HCT" = "#BBBDC0")
+    "Non-HCT" = "#BBBDC0",
+    "No Transit" = "#BBBDC0",
+    "Metro" = "#91268F",
+    "Core" = "#F05A28",
+    "HCT" = "#8CC63E",
+    "Cities & Towns" = "#00A7A0",
+    "Urban Unincorporated" = "#76787A",
+    "Rural" = "#BBBDC0")
 
 # Colors for Bar Charts in MSA Comparison plots
 bar_colors <- c(
@@ -111,9 +132,6 @@ uza_vmt <- "uza-vmt"
 # Urban Area to MSA Lookup
 uza_ua_codes <- "uza_ua_codes"
 
-# Flag to determine Network or Linear Buffer
-network_buffer <-"yes"
-
 # Geographic Lookups by parcel
 parcel_file <- "parcel_ids"
 all_transit_file  <- "all_transit"
@@ -123,6 +141,7 @@ city_file  <- "city"
 poverty_file <- "poverty"
 lrt_stations <- "lrt_stations"
 rgc <- "regional_growth_centers"
+regional_geo <- "cities_king_paa"
 
 if (network_buffer == "yes") {tod_file<-"tod_network"} else {tod_file<-"tod_linear"}
 
@@ -131,9 +150,9 @@ tod_types <- list(100,101,102,103,104,105,106,100:106)
 tod_names <- c("Non-HCT","Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Total")
 tod_order <- c("Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Non-HCT","Total")
 
-hct_types <- list(100,101:105,106,100:106)
-hct_names <- c("Rest of Region","High Capacity Transit","Local Transit","Total")
-hct_order <- c("High Capacity Transit","Local Transit","Rest of Region","Total")
+hct_types <- list(0,1,2,0:2)
+hct_names <- c("No Transit","High Capacity Transit","Local Transit","Total")
+hct_order <- c("High Capacity Transit","Local Transit","No Transit","Total")
 
 transit_buffer_types <- list(0,1,list(0,1))
 transit_names <- c("Outside Transit Buffer", "Near Transit","Total")
@@ -148,6 +167,19 @@ minority_names <- c("Lower Share of People of Color", "Higher Share of People of
 poverty_types <- list(1,2,1:2)
 poverty_names <- c("Lower share of Low Income People", "Higher share of Low Income People","Total")
 
+if (regional_geography_used == "proposed") {
+  rgeo_types <- list(1,2,3,4,5,6,1:6)
+  rgeo_names <- c("Metro","Core","HCT","Cities & Towns","Urban Unincorporated","Rural","Total")
+  rgeo_order <- rgeo_names
+  rgeo_id <- "rgs_proposed_id"
+
+} else {
+  rgeo_types <- list(1,2,3,4,5,6,1:6)
+  rgeo_names <- c("Metro","Core","Larger","Small","Urban Unincorporated","Rural","Total")
+  rgeo_order <- rgeo_names
+  rgeo_id <- "rgs_id"  
+}
+
 # Flags to determine the geographic lookup to add to the parcel results for summary
 parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"))
 
@@ -160,6 +192,12 @@ job_cap_col <- "JOBSPdiff50"
 cap_atttributes <- list("pop_capacity","job_capacity")
 lu_atttributes <- list("population","employment")
 cap_atttributes <- list("pop_capacity","job_capacity")
+
+# Lists for Analysis
+run_description <- as.character(current_run$`Quick Description`)
+run_short <- as.character(current_run$`Run Name Alias`)
+alternatives <- list(c(wrk_scenario, run_short, run_description))
+scen_levls <- c(alternatives[[1]][[3]])
 
 # Create a list of Scenario Names
 scenario_names <- NULL
@@ -352,7 +390,19 @@ table_from_db <- function(srv_nm,db_nm,tbl_nm) {
   return(w_tbl)
 }
 
+# Basic Scenario Assumptions
+if (is.na(current_run$`Fully Int`)) {integrated_run <- "No"} else {integrated_run <- "Yes"}
+if (is.na(current_run$`Parcels in Network Distance`)) {buffer <- "Linear Buffer"} else {buffer <- "Network Buffer"}
+if (is.na(current_run$`Special model used in  Alloc (LUV) Years`)) {luv_dm <- "Off"} else {luv_dm <- "On"}
 ```
+# Scenario Assumptions
+
+**Scenario Name: ** `r toString(run_short)`   
+**Quick Description: ** `r toString(run_description)`   
+**Integrated Run: ** `r toString(integrated_run)`   
+**Buffer Type: ** `r toString(buffer)`   
+**LUV Year Developer Model: ** `r toString(luv_dm)`   
+**Location of UrbanSim Indicator Files: ** `r toString(parcel_file_path)`   
 
 ```{r soundcast_information, include=FALSE}
 
@@ -404,8 +454,6 @@ job_sectors <- c("Const/Res","FIRE","Manufacturing","Retail","Services","WTU","G
 working_data <- macro_forecast[category %in% "Estimated Total Employment" & variable %in% job_sectors & year %in% working_years]
 region_sector_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,2000000,"Total Employment","Year","Regional Employment by Sector")
 ```
-
-**Scenario: `r toString(alternatives[[1]][[3]])` (aka `r toString(alternatives[[1]][[1]])`)**
 
 # Regional Macroeconomic Forecast {.tabset .tabset.fade .tabset-pills}
 PSRC forecasts the region's households, persons, jobs, and other economic and demographic variables through the year 2050. The Macroeconomic Forecast is an input to PSRC's land use and travel forecasting and provides the growth assumptions used in our regional growth strategy. It is developed by PSRC with help and review by technical staff from state and local government. PSRC uses an in-house econometric model system whose equations are estimated using over four decades of historical data along with a national macroeconomic forecast and a regional aerospace forecast that are developed separately and combined to create the regional forecast.
@@ -541,7 +589,22 @@ parcels$tod_id[parcels$tod_id == 100 & parcels$transit_buffer_id == 1] <- 106
 
 # Add HCT ID Field
 parcel_lookups <- append(parcel_lookups,list(list("hct_id",tod_file,hct_types,hct_names,hct_order,"High Capacity Transit")))
-parcels$hct_id <- parcels$tod_id
+parcels$hct_id <- 0
+parcels$hct_id[parcels$tod_id == 100] <- 0
+parcels$hct_id[parcels$tod_id >= 101 & parcels$tod_id <= 105] <- 1
+parcels$hct_id[parcels$tod_id == 106] <- 2
+
+# Add Cities to get Regional Geographies
+w_lk <- create_table_from_input("inputs","city","csv")
+parcels <- merge(parcels, w_lk, by = "parcel_id")
+
+w_lk <- create_table_from_input("inputs",regional_geo,"csv") 
+cols <- c("city_id",rgeo_id)
+w_lk <- w_lk[,..cols]
+parcels <- merge(parcels, w_lk, by = "city_id")
+
+# Add Regional Geography Field to Lookups
+parcel_lookups <- append(parcel_lookups,list(list(rgeo_id,tod_file,rgeo_types,rgeo_names,rgeo_order,"Regional Geographies")))
 
 # Add Housing and Job Capacity to Parcel data.table
 w_tbl <- NULL
@@ -565,7 +628,8 @@ wrk_measures <- c("population","employment")
 
 for (w_years in analysis_years) {
   w_tbl <- NULL
-  w_tbl <- create_table_from_input(paste0("inputs/",wrk_scenario),paste0("parcel__dataset_table__households_jobs__",w_years),"tab")
+  w_tbl <- read.table(paste0(parcel_file_path,"parcel__dataset_table__households_jobs__",w_years,".tab"),sep = '\t',header = TRUE)
+  setDT(w_tbl)
   cols <- c("parcel_id",wrk_measures)
   w_tbl <- w_tbl[,..cols]
   w_tbl <- w_tbl[,(cols):= lapply(.SD, as.integer), .SDcols = cols]
@@ -973,61 +1037,8 @@ for (i in seq(1:5)) {
 
 ```
 
-# Growth by Area Type {.tabset .tabset.fade .tabset-pills}
-By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The charts below illustrate the share of population growth for the `r toString(scenario_names)` scenario summarized in this document.
-
-
-```{r growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
-
-my_list <- list(1,2,3,4,6)
-
-for (i in my_list) {
-  summary_geo <- "Region"
-  header_names <- parcel_lookups[[i]][[6]]
-  wrk_id <- parcel_lookups[[i]][[1]]
-  wrk_nms <- parcel_lookups[[i]][[4]]
-  wrk_ord <- parcel_lookups[[i]][[5]]
-  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
-  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
-  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
-  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
-  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
-  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
-  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
-  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
-  summary_columns <- c("2017","2050","Delta","Percent")
-  summary_attributes <- c("People","Jobs")
-  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
-}
-```
-
-`r paste(out, collapse="\n")`
-
-
-# Share of Growth by Area Type {.tabset .tabset.fade .tabset-pills}
-By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The charts below illustrate the share of population growth for the `r toString(scenario_names)` scenario summarized in this document.
-
-
-```{r growth-pie-charts, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
-
-my_list <- list(1,2,3,4,6)
-
-for (i in my_list) {
-  summary_geo <- "Region"
-  header_names <- parcel_lookups[[i]][[6]]
-  wrk_id <- parcel_lookups[[i]][[1]]
-  wrk_nms <- parcel_lookups[[i]][[4]]
-  wrk_ord <- parcel_lookups[[i]][[5]]
-  out <- c(out, knitr::knit_child("pie-charts-by-type-child.Rmd"))
-}
-```
-
-`r paste(out, collapse="\n")`
-
-# Growth by Transit Type {.tabset .tabset.fade .tabset-pills}
-...
+# Growth by Transit Area {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The table below illustrates the population and employment growth for the `r toString(scenario_names)` scenario summarized in this document by county and proximity to type of transit.
 
 ```{r county-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
 out <- NULL
@@ -1050,34 +1061,99 @@ for (i in my_list) {
   r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
   summary_columns <- c("2017","2050","Delta","Percent")
   summary_attributes <- c("People","Jobs")
-  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
 }
+
 ```
 
 `r paste(out, collapse="\n")`
 
-# Share of Growth by Transit Type {.tabset .tabset.fade .tabset-pills}
-...
+## Transit Area Map
 
-```{r county-growth-pie-charts, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
+```{r transit-area-map-setup, include=FALSE}
 
-my_list <- list(1,2,3,4,5)
+# Colors for Area Maps
+lrt_id <- "101"
+crt_id <- "102"
+ferry_id <- "103"
+brt_id <- "104"
+rgc_id <- "105"
 
-for (i in my_list) {
-  summary_geo <- county_lookups[[2]][[i]]
-  header_names <- county_lookups[[2]][[i]]
-  wrk_id <- 'tod_id'
-  wrk_nms <- tod_names
-  wrk_ord <- tod_order
-  out <- c(out, knitr::knit_child("pie-charts-by-type-child.Rmd"))
-}
+working_colors <- c(
+    "100" = "#BBBDC0",
+    "101" = "#F05A28",
+    "102" = "#8CC63E",
+    "103" = "#00A7A0",
+    "104" = "#91268F",
+    "105" = "#76787A",
+    "106" = "#00FFFF")
+
+# Read the Area Shapefile into memory
+lrt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_lrt')
+crt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_crt')
+ferry.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_pof')
+brt.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_brt')
+rgc.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='tod_id_rgc')
+
+working_map <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
+  addPolygons(data=lrt.shape,
+              fillColor = working_colors[[lrt_id]],
+              color = working_colors[[lrt_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Light Rail")%>%
+  addPolygons(data=crt.shape,
+              fillColor = working_colors[[crt_id]],
+              color = working_colors[[crt_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Commuter Rail")%>%
+  addPolygons(data=ferry.shape,
+              fillColor = working_colors[[ferry_id]],
+              color = working_colors[[ferry_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Passenger Only Ferry")%>%
+  addPolygons(data=brt.shape,
+              fillColor = working_colors[[brt_id]],
+              color = working_colors[[brt_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Bus Rapid Transit")%>%
+  addPolygons(data=rgc.shape,
+              fillColor = working_colors[[rgc_id]],
+              color = working_colors[[rgc_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Regional Growth Centers")%>%
+  addLayersControl(baseGroups = c("Base Map"),
+                   overlayGroups = c("Light Rail","Commuter Rail","Passenger Only Ferry","Bus Rapid Transit","Regional Growth Centers"),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  addEasyButton(easyButton(
+    icon="fa-anchor", title="Bremerton",
+    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-amazon", title="Cross-Lake",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-plane", title="Everett",
+    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-glass", title="Tacoma",
+    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Region",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+
 ```
 
-`r paste(out, collapse="\n")`
+```{r, echo=FALSE, results="asis"}
+working_map
+```
 
-# Capacity by Transit Type {.tabset .tabset.fade .tabset-pills}
-...
+# Capacity by Transit Area {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs around the various transit area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r county-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
 out <- NULL
@@ -1090,6 +1166,262 @@ for (i in my_list) {
   wrk_id <- 'tod_id'
   wrk_nms <- tod_names
   wrk_ord <- tod_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Growth near HCT {.tabset .tabset.fade .tabset-pills}
+`r toString(scenario_names)` scenario, placed xx percent of the population growth and xx of the employment growth near high capacity transit. 
+
+```{r county-hct-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'hct_id'
+  wrk_nms <- hct_names
+  wrk_ord <- hct_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Delta","Percent")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## HCT Area Map
+
+```{r hct-area-map-setup, include=FALSE}
+
+# Colors for Area Maps
+no_transit <- 0
+hct_id <- "1"
+local_id <- "2"
+
+working_colors <- c(
+    "0" = "#BBBDC0",
+    "1" = "#F05A28",
+    "2" = "#8CC63E")
+
+# Read the Area Shapefile into memory
+hct.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='hct_id_hct')
+
+working_map <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
+  addPolygons(data=hct.shape,
+              fillColor = working_colors[[hct_id]],
+              color = working_colors[[hct_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="High Capacity Transit")%>%
+  addLayersControl(baseGroups = c("Base Map"),
+                   overlayGroups = c("High Capacity Transit"),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  addEasyButton(easyButton(
+    icon="fa-anchor", title="Bremerton",
+    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-amazon", title="Cross-Lake",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-plane", title="Everett",
+    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-glass", title="Tacoma",
+    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Region",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+
+```
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
+
+# Capacity near HCT {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs around high capacity transit and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
+
+```{r county-capacity-hct-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'hct_id'
+  wrk_nms <- hct_names
+  wrk_ord <- hct_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Growth by Regional Geograpghy {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, xxx.
+
+```{r rgeo-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- rgeo_id
+  wrk_nms <- rgeo_names
+  wrk_ord <- rgeo_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Delta","Percent")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Regional Geography Map
+
+```{r regeo-area-map-setup, include=FALSE}
+
+# Colors for Area Maps
+metro_id <- "1"
+core_id <- "2"
+hct_id <- "3"
+cities_id <- "4"
+uu_id <- "5"
+rural_id <- "6"
+
+working_colors <- c(
+    "1" = "#F05A28",
+    "2" = "#8CC63E",
+    "3" = "#00A7A0",
+    "4" = "#91268F",
+    "5" = "#76787A",
+    "6" = "#00FFFF")
+
+# Read the Area Shapefile into memory
+metro.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_metro')
+core.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_core')
+hct.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_hct')
+cities.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_cities')
+uu.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_uu')
+#rural.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles/areas',layer='rgeo_id_rural')
+
+working_map <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron, group="Base Map") %>%
+  addPolygons(data=metro.shape,
+              fillColor = working_colors[[metro_id]],
+              color = working_colors[[metro_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Metro Cities")%>%
+  addPolygons(data=core.shape,
+              fillColor = working_colors[[core_id]],
+              color = working_colors[[core_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Core Cities")%>%
+  addPolygons(data=hct.shape,
+              fillColor = working_colors[[hct_id]],
+              color = working_colors[[hct_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="High Capacity Transit Cities")%>%
+  addPolygons(data=cities.shape,
+              fillColor = working_colors[[cities_id]],
+              color = working_colors[[cities_id]],
+              fillOpacity = 0.7,
+              weight=0,
+              group="Cities & Towns")%>%
+  addPolygons(data=uu.shape,
+              fillColor = working_colors[[uu_id]],
+              color = working_colors[[uu_id]],
+              fillOpacity = 0.7,
+              weight=1,
+              group="Urban Unicorporated")%>%
+  addLayersControl(baseGroups = c("Base Map"),
+                   overlayGroups = c("Metro Cities","Core Cities","High Capacity Transit Cities","Cities & Towns","Urban Unicorporated"),
+                   options = layersControlOptions(collapsed = FALSE)) %>%
+  addEasyButton(easyButton(
+    icon="fa-anchor", title="Bremerton",
+    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-amazon", title="Cross-Lake",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-plane", title="Everett",
+    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-glass", title="Tacoma",
+    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Region",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+
+```
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
+
+# Capacity by Regional Geography {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs around the various regional geographies and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
+
+```{r rgeo-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- rgeo_id
+  wrk_nms <- rgeo_names
+  wrk_ord <- rgeo_order
   r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
   r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
   r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)

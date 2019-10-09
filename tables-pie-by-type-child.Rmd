@@ -1,0 +1,77 @@
+---
+title: "tables-pie-by-type-child"
+output: html_document
+---
+```{r, include=FALSE}
+
+# Code for Creating Table
+wrk_tbl <- NULL
+numeric_columns <- c('2017 Pop','2050 Pop','Pop Growth','2017 Job','2050 Job','Job Growth')
+percent_columns <- c('Pop Percent','Job Percent')
+
+wrk_tbl <- data.table(Area=wrk_nms,`2017 Pop`=unlist(results_by_type[[r1]]),`2050 Pop`=unlist(results_by_type[[r2]]),`Pop Growth`=unlist(results_by_type[[r3]]),`Pop Percent`=unlist(results_by_type[[r4]]),`2017 Job`=unlist(results_by_type[[r5]]),`2050 Job`=unlist(results_by_type[[r6]]),`Job Growth`=unlist(results_by_type[[r7]]),`Job Percent`=unlist(results_by_type[[r8]]))
+
+wrk_tbl$Area <- factor(wrk_tbl$Area, levels = wrk_ord)
+wrk_tbl <- wrk_tbl[order(Area),]
+
+pop_job_table_container <- create_table_container('Area Type', summary_attributes, summary_columns)
+clean_tbl <- datatable(wrk_tbl, container = pop_job_table_container, rownames = FALSE, options = list(pageLength = 15, columnDefs = list(list(className = 'dt-center', targets =1:8))))
+
+# Format Numeric Columns to have comma separation and centered
+for (working_column in numeric_columns) {
+  clean_tbl <- clean_tbl %>% 
+    formatCurrency(working_column, "", digits = 0) %>%
+    formatStyle(working_column,`text-align` = 'center')
+}
+
+for (working_column in percent_columns) {
+    clean_tbl <- clean_tbl %>% 
+      formatPercentage(working_column,0) %>%
+      formatStyle(working_column,`text-align` = 'center')
+}
+
+# Code for Creating Pie Charts
+wrk_tbl <- NULL
+numeric_columns <- c('People','Jobs')
+
+wrk_tbl <- data.table(Area=wrk_nms,People=unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_share_pop_change_by_",wrk_id,"_",summary_geo)]]),Jobs=unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_share_job_change_by_",wrk_id,"_",summary_geo)]]))
+
+wrk_tbl$Area <- factor(wrk_tbl$Area, levels = wrk_ord)
+wrk_tbl <- wrk_tbl[order(Area),]
+
+# Create Pie Charts by first making a long format table
+var_levels <- c("People","Jobs")
+plot_tbl <- melt(wrk_tbl, id.vars=c('Area'))
+
+# Set order of Type to Display
+plot_tbl$Area <- factor(plot_tbl$Area, levels = wrk_ord)
+plot_tbl <- plot_tbl[order(Area),]
+
+plot_tbl$variable <- factor(plot_tbl$variable, levels = var_levels)
+plot_tbl <- plot_tbl[order(variable),]
+
+# Remove Region Total from the Table
+plot_tbl <- subset(plot_tbl, !(Area %in% "Total"))
+
+wrk_pie <- ggplot(plot_tbl, aes(x = "", y = value, fill = Area)) +
+  geom_bar(width = 1, stat = "identity", color = "white") +
+  coord_polar("y", start = 0)+
+  geom_text(aes(label = paste0(round(value*100), "%")), color = "white", position = position_stack(vjust = 0.5))+
+  scale_fill_manual(values = psrc_colors) +
+  theme_void()+
+  theme(legend.position = "bottom", legend.direction = "horizontal")
+  
+wrk_pie <- wrk_pie + facet_grid(cols = vars(variable))
+```
+
+## `r header_names`
+
+```{r, echo=FALSE, results="asis"}
+clean_tbl
+```
+
+**Share of Population and Employment Growth by Area Type**
+
+```{r, echo=FALSE, results="asis"}
+wrk_pie
+```
