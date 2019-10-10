@@ -16,7 +16,6 @@ wrk_tbl <- wrk_tbl[order(Area),]
 pop_job_table_container <- create_table_container('Area Type', summary_attributes, summary_columns)
 clean_tbl <- datatable(wrk_tbl, container = pop_job_table_container, rownames = FALSE, options = list(pageLength = 15, columnDefs = list(list(className = 'dt-center', targets =1:8))))
 
-# Format Numeric Columns to have comma separation and centered
 for (working_column in numeric_columns) {
   clean_tbl <- clean_tbl %>% 
     formatCurrency(working_column, "", digits = 0) %>%

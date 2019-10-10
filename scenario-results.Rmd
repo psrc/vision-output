@@ -3,8 +3,8 @@ title: "Technical Analysis for VISION 2050 "
 output: 
   html_document:
     theme: cerulean
-    toc: true
-    toc_float: true
+    toc: false
+    toc_float: false
     number_sections: false
 ---
 
@@ -190,7 +190,7 @@ hh_cap_col <- "DUdiff50"
 job_cap_col <- "JOBSPdiff50"
 
 cap_atttributes <- list("pop_capacity","job_capacity")
-lu_atttributes <- list("population","employment")
+lu_atttributes <- list("population","employment","housing_units")
 cap_atttributes <- list("pop_capacity","job_capacity")
 
 # Lists for Analysis
@@ -667,7 +667,7 @@ w_tbl <- w_tbl[,hh_capacity:=NULL]
 parcels <- merge(parcels, w_tbl, by = "parcel_id")
 
 # Add Population and Employment to Parcel data.table
-wrk_measures <- c("population","employment")
+wrk_measures <- c("population","employment","residential_units")
 
 for (w_years in analysis_years) {
   w_tbl <- NULL
@@ -676,7 +676,7 @@ for (w_years in analysis_years) {
   cols <- c("parcel_id",wrk_measures)
   w_tbl <- w_tbl[,..cols]
   w_tbl <- w_tbl[,(cols):= lapply(.SD, as.integer), .SDcols = cols]
-  upd_nms <- c("parcel_id",paste0("population_",w_years),paste0("employment_",w_years))
+  upd_nms <- c("parcel_id",paste0("population_",w_years),paste0("employment_",w_years),paste0("housing_units_",w_years))
   setnames(w_tbl,upd_nms)
 
   # Join with TOD Flags
@@ -979,7 +979,7 @@ job_chart
 ```
 
 ```{r scenario_calualtions, include=FALSE}
-wrk_measures <- c("population","employment")
+wrk_measures <- c("population","employment","housing_units")
 results_by_type = NULL
 
 # Calculate and store Capacity by Geographic Lookup in a List
@@ -1023,7 +1023,7 @@ for (i in seq(1:5)) {
   
       # Create long list format for calculations
       melt_vars <- c("parcel_id",lookups[[1]])
-      meas_vars <- c(paste0("population_",w_year),paste0("employment_",w_year))
+      meas_vars <- c(paste0("population_",w_year),paste0("employment_",w_year),paste0("housing_units_",w_year))
       w_p <- melt(county_parcels,id.vars = melt_vars, measure.vars = meas_vars)
       w_p$scenario <- alternatives[[1]][[2]]
       w_p$year <- w_year
@@ -1033,6 +1033,27 @@ for (i in seq(1:5)) {
         calc_by_tod <- partial(sum_table_values, tbl=w_p, w_col = lookups[[1]], w_scen=alternatives[[1]][[2]], w_var=paste0(lu,"_",w_year), w_yr=w_year)
         results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_",lu,"_by_",lookups[[1]],"_",cnty_nm)]] <- map(lookups[[3]],calc_by_tod)
       } 
+    }
+  }
+}
+
+# Calculate Regionwide Jobs to Housing Ratios by year
+for (w_year in analysis_years){
+  results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_regionwide_jhr")]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_employment_by_county_id_Region")]][[5]], results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_housing_units_by_county_id_Region")]][[5]])
+}
+
+# Calculate Jobs to Housing Ratios by year, geography type and county
+for (i in seq(1:5)) {
+  
+  cnty_id <- county_lookups[[1]][[i]]
+  cnty_nm <- county_lookups[[2]][[i]]
+
+  for (lookups in parcel_lookups) {
+  
+    for (w_year in analysis_years){
+      results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_jhr_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_employment_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_housing_units_by_",lookups[[1]],"_",cnty_nm)]])
+      
+     results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_jhr_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/', results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_jhr_by_",lookups[[1]],"_",cnty_nm)]],results_by_type[[paste0(alternatives[[1]][[2]],"_",w_year,"_regionwide_jhr")]])
     }
   }
 }
@@ -1050,12 +1071,18 @@ for (i in seq(1:5)) {
   
     # Calculate the Total Job Change from the Base Year
     results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[2]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]])
+    
+    # Calculate the Total Job to Housing Ratio change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_jhr_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('-',  results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[2]],"_jhr_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_jhr_by_",lookups[[1]],"_",cnty_nm)]])
 
     # Calculate the % Pop Change from the Base Year
     results_by_type[[paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[1]],"_by_",lookups[[1]],"_",cnty_nm)]])
   
     # Calculate the % Job Change from the Base Year
-    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]])   
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_job_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_job_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_",wrk_measures[[2]],"_by_",lookups[[1]],"_",cnty_nm)]])  
+    
+    # Calculate the % Jobs to Housing Ratio Change from the Base Year
+    results_by_type[[paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",lookups[[1]],"_",cnty_nm)]] <- Map('/',  results_by_type[[paste0(alternatives[[1]][[2]],"_jhr_change_by_",lookups[[1]],"_",cnty_nm)]], results_by_type[[paste0(alternatives[[1]][[2]],"_",analysis_years[[1]],"_jhr_by_",lookups[[1]],"_",cnty_nm)]])
     
     # Calculate the Share of the Total Change from the Base Year
     total_hh_pop_chg <- last(unlist(results_by_type[[paste0(alternatives[[1]][[2]],"_pop_change_by_",lookups[[1]],"_",cnty_nm)]]))
@@ -1102,8 +1129,12 @@ for (i in my_list) {
   r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
   r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
   r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
-  summary_columns <- c("2017","2050","Delta","Percent")
-  summary_attributes <- c("People","Jobs")
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
   out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
 }
 
@@ -1175,8 +1206,12 @@ for (i in my_list) {
   r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
   r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
   r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
-  summary_columns <- c("2017","2050","Delta","Percent")
-  summary_attributes <- c("People","Jobs")
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
   out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
 }
 ```
@@ -1247,8 +1282,12 @@ for (i in my_list) {
   r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
   r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
   r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
-  summary_columns <- c("2017","2050","Delta","Percent")
-  summary_attributes <- c("People","Jobs")
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
   out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
 }
 

@@ -7,9 +7,10 @@ output: html_document
 # Code for Creating Table
 wrk_tbl <- NULL
 numeric_columns <- c('2017 Pop','2050 Pop','Pop Growth','2017 Job','2050 Job','Job Growth')
-percent_columns <- c('Pop Percent','Job Percent')
+decimal_columns <- c('2017 JHR','2050 JHR','JHR Growth')
+percent_columns <- c('Pop Percent','Job Percent', 'JHR Percent')
 
-wrk_tbl <- data.table(Area=wrk_nms,`2017 Pop`=unlist(results_by_type[[r1]]),`2050 Pop`=unlist(results_by_type[[r2]]),`Pop Growth`=unlist(results_by_type[[r3]]),`Pop Percent`=unlist(results_by_type[[r4]]),`2017 Job`=unlist(results_by_type[[r5]]),`2050 Job`=unlist(results_by_type[[r6]]),`Job Growth`=unlist(results_by_type[[r7]]),`Job Percent`=unlist(results_by_type[[r8]]))
+wrk_tbl <- data.table(Area=wrk_nms,`2017 Pop`=unlist(results_by_type[[r1]]),`2050 Pop`=unlist(results_by_type[[r2]]),`Pop Growth`=unlist(results_by_type[[r3]]),`Pop Percent`=unlist(results_by_type[[r4]]),`2017 Job`=unlist(results_by_type[[r5]]),`2050 Job`=unlist(results_by_type[[r6]]),`Job Growth`=unlist(results_by_type[[r7]]),`Job Percent`=unlist(results_by_type[[r8]]),`2017 JHR`=unlist(results_by_type[[r9]]),`2050 JHR`=unlist(results_by_type[[r10]]),`JHR Growth`=unlist(results_by_type[[r11]]),`JHR Percent`=unlist(results_by_type[[r12]]))
 
 wrk_tbl$Area <- factor(wrk_tbl$Area, levels = wrk_ord)
 wrk_tbl <- wrk_tbl[order(Area),]
@@ -17,7 +18,13 @@ wrk_tbl <- wrk_tbl[order(Area),]
 pop_job_table_container <- create_table_container('Area Type', summary_attributes, summary_columns)
 clean_tbl <- datatable(wrk_tbl, container = pop_job_table_container, rownames = FALSE, options = list(pageLength = 15, columnDefs = list(list(className = 'dt-center', targets =1:8))))
 
-# Format Numeric Columns to have comma separation and centered
+# Format Columns to have comma separation and centered and various styles
+for (working_column in decimal_columns) {
+  clean_tbl <- clean_tbl %>% 
+    formatCurrency(working_column, "", digits = 2) %>%
+    formatStyle(working_column,`text-align` = 'center')
+}
+
 for (working_column in numeric_columns) {
   clean_tbl <- clean_tbl %>% 
     formatCurrency(working_column, "", digits = 0) %>%
