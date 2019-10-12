@@ -96,7 +96,25 @@ psrc_colors <- c(
     "HCT" = "#8CC63E",
     "Cities & Towns" = "#00A7A0",
     "Urban Unincorporated" = "#76787A",
-    "Rural" = "#BBBDC0")
+    "Rural" = "#BBBDC0",
+    "NW Snohomish" = "#76787A",
+    "Everett" = "#F05A28",
+    "SW Snohomish" = "#00A7A0",
+    "Snohomish Other" = "#91268F",
+    "Shoreline" = "#76787A",
+    "Seattle" = "#F05A28",
+    "Eastside King" = "#8CC63E",
+    "SW King" = "#00A7A0",
+    "Green River" = "#91268F",
+    "SE King" = "#76787A",
+    "King Other" = "#F05A28",
+    "Tacoma" = "#8CC63E",
+    "SW Pierce" = "#00A7A0",
+    "Pierce Other" = "#91268F",
+    "Peninsula" = "#76787A",
+    "South Kitsap" = "#F05A28",
+    "Central Kitsap" = "#8CC63E",
+    "North Kitsap" = "#00A7A0")
 
 # Colors for Bar Charts in MSA Comparison plots
 bar_colors <- c(
@@ -142,6 +160,7 @@ poverty_file <- "poverty"
 lrt_stations <- "lrt_stations"
 rgc <- "regional_growth_centers"
 regional_geo <- "cities_king_paa"
+large_areas_file <- "large_area"
 
 if (network_buffer == "yes") {tod_file<-"tod_network"} else {tod_file<-"tod_linear"}
 
@@ -160,6 +179,7 @@ transit_order <- c("Near Transit", "Outside Transit Buffer","Total")
 
 county_types <- list(33,35,53,61,list(33,35,53,61))
 county_names <- c("King", "Kitsap", "Pierce", "Snohomish","Total")
+county_order <- county_names
 
 minority_types <- list(1,2,1:2)
 minority_names <- c("Lower Share of People of Color", "Higher Share of People of Color","Total")
@@ -180,8 +200,13 @@ if (regional_geography_used == "proposed") {
   rgeo_id <- "rgs_id"  
 }
 
+la_types <- list(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18, 1:18)
+la_names <- c("NW Snohomish","Everett","SW Snohomish","Snohomish Other","Shoreline","Seattle","Eastside King","SW King","Green River","SE King","King Other","Tacoma","SW Pierce","Pierce Other","Peninsula","South Kitsap","Central Kitsap","North Kitsap","Total")
+la_order <- la_names
+la_id <- "large_area_id" 
+
 # Flags to determine the geographic lookup to add to the parcel results for summary
-parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"))
+parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"),list("large_area_id",large_areas_file,la_types,la_names,la_order,"Large Areas"))
 
 county_lookups <- list(list(33,35,53,61,list(33,35,53,61)),list("King", "Kitsap", "Pierce", "Snohomish","Region"))
 
@@ -598,7 +623,6 @@ region_sector_chart
 ```
 
 ```{r parcel_information, include=FALSE}
-
 # Create a full parcel file with ID's and then add relevant lookups to it
 parcels <- NULL
 w_lk <- NULL
@@ -1107,10 +1131,164 @@ for (i in seq(1:5)) {
 
 ```
 
+# Growth by County {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, xxx.
+
+```{r county-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'county_id'
+  wrk_nms <- county_names
+  wrk_ord <- county_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Area Map
+
+```{r county-area-map-setup, include=FALSE}
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list("#F05A28",'county_id_king',"King"),list("#8CC63E",'county_id_kitsap',"Kitsap"),list("#00A7A0",'county_id_pierce',"Pierce"),list("#91268F",'county_id_snohomish',"Snohomish"))
+working_map <- create_area_map(areas_to_map,area_directory)
+```
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
+
+# Capacity by County {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs by county and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
+
+```{r county-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'county_id'
+  wrk_nms <- county_names
+  wrk_ord <- county_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Growth by Large Area {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, xxx.
+
+```{r la-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- la_id
+  wrk_nms <- la_names
+  wrk_ord <- la_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Area Map
+
+```{r la-area-map-setup, include=FALSE}
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list("#F05A28",'large_area_id_nw_snohomish',"NW Snohomish"),list("#8CC63E",'large_area_id_everett',"Everett"),list("#00A7A0",'large_area_id_sw_snohomish',"SW Snohomish"),list("#91268F",'large_area_id_snohomish_other',"Snohomish Other"), list("#76787A",'large_area_id_shoreline',"Shoreline"),list("#F05A28",'large_area_id_seattle',"Seattle"),list("#8CC63E",'large_area_id_eastside_king',"Eastside King"),list("#00A7A0",'large_area_id_sw_king',"SW King"),list("#91268F",'large_area_id_green_river',"Green River"), list("#76787A",'large_area_id_se_king',"SE King"),list("#F05A28",'large_area_id_king_other',"King Other"),list("#8CC63E",'large_area_id_tacoma',"Tacoma"),list("#00A7A0",'large_area_id_sw_pierce',"SW Pierce"),list("#91268F",'large_area_id_pierce_other',"Pierce Other"), list("#76787A",'large_area_id_peninsula',"Peninsula"),list("#F05A28",'large_area_id_south_kitsap',"South Kitsap"),list("#8CC63E",'large_area_id_central_kitsap',"Central Kitsap"),list("#00A7A0",'large_area_id_north_kitsap',"North Kitsap"))
+working_map <- create_area_map(areas_to_map,area_directory)
+```
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
+
+# Capacity by Large Area {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs by large area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
+
+```{r la-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- la_id
+  wrk_nms <- la_names
+  wrk_ord <- la_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
 # Growth by Transit Area {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The table below illustrates the population and employment growth for the `r toString(scenario_names)` scenario summarized in this document by county and proximity to type of transit.
 
-```{r county-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+```{r ta-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
 out <- NULL
 
 my_list <- list(1,2,3,4,5)
@@ -1142,9 +1320,9 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Transit Area Map
+## Area Map
 
-```{r transit-area-map-setup, include=FALSE}
+```{r ta-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list("#F05A28",'tod_id_lrt',"Light Rail"),list("#8CC63E",'tod_id_crt',"Commuter Rail"),list("#00A7A0",'tod_id_pof',"Passenger Only Ferry"),list("#91268F",'tod_id_brt',"Bus Rapid Transit"), list("#76787A",'tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
@@ -1157,7 +1335,7 @@ working_map
 # Capacity by Transit Area {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs around the various transit area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
-```{r county-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+```{r ta-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
 out <- NULL
 
 my_list <- list(1,2,3,4,5)
@@ -1218,7 +1396,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## HCT Area Map
+## Area Map
 
 ```{r hct-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'

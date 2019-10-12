@@ -9,8 +9,8 @@ import time
 working_directory = os.path.join(os.getcwd(),'inputs','shapefiles')
 input_directory = os.path.join(os.getcwd(),'inputs')
 
-geo_id = 'lookups'
-lookup_file = os.path.join(input_directory,'parcel_geoids.csv')
+geo_id = 'large_area'
+lookup_file = os.path.join(input_directory,'large_area.csv')
 
 # Shapefiles
 parcel_file = os.path.join(working_directory,'prcl15_4k.shp')
