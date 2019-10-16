@@ -36,7 +36,7 @@ library(tidyverse)
 library(zoo)
 
 # Indicator File Directories
-wrk_scenario <- "Quick-kick"
+wrk_scenario <- "Flash"
 results_folder <- ":/vision2050/opusgit/urbansim_data/data/psrc_parcel/runs/"
 us_nm <- Sys.getenv("USERNAME")
 
@@ -161,6 +161,8 @@ lrt_stations <- "lrt_stations"
 rgc <- "regional_growth_centers"
 regional_geo <- "cities_king_paa"
 large_areas_file <- "large_area"
+rgc_tod_file <- "rgc_tod"
+ferry_buffer_upd_file <- "ferry_updates"
 
 if (network_buffer == "yes") {tod_file<-"tod_network"} else {tod_file<-"tod_linear"}
 
@@ -168,6 +170,10 @@ if (network_buffer == "yes") {tod_file<-"tod_network"} else {tod_file<-"tod_line
 tod_types <- list(100,101,102,103,104,105,106,100:106)
 tod_names <- c("Non-HCT","Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Total")
 tod_order <- c("Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Non-HCT","Total")
+
+rgc_tod_types <- list(100,101,102,103,104,105,106,100:106)
+rgc_tod_names <- c("Non-HCT","Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Regional Growth Centers","Local Transit","Total")
+rgc_tod_order <- c("Regional Growth Centers","Light Rail","Commuter Rail","Ferry","Bus Rapid Transit","Local Transit","Non-HCT","Total")
 
 hct_types <- list(0,1,2,0:2)
 hct_names <- c("No Transit","High Capacity Transit","Local Transit","Total")
@@ -206,7 +212,7 @@ la_order <- la_names
 la_id <- "large_area_id" 
 
 # Flags to determine the geographic lookup to add to the parcel results for summary
-parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"),list("large_area_id",large_areas_file,la_types,la_names,la_order,"Large Areas"))
+parcel_lookups <- list(list("tod_id",tod_file,tod_types, tod_names, tod_order,"Transit Type"),list("county_id",county_file,county_types, county_names,county_names,"County"),list("minority_id",minority_file,minority_types,minority_names,minority_names,"Minority"),list("poverty_id",poverty_file,poverty_types,poverty_names,poverty_names,"Low Income"),list("transit_buffer_id",all_transit_file,transit_buffer_types,transit_names,transit_order,"All Transit"),list("large_area_id",large_areas_file,la_types,la_names,la_order,"Large Areas"),list("rgc_tod_id",rgc_tod_file,rgc_tod_types, rgc_tod_names, rgc_tod_order,"RGC and Transit Type"))
 
 county_lookups <- list(list(33,35,53,61,list(33,35,53,61)),list("King", "Kitsap", "Pierce", "Snohomish","Region"))
 
@@ -661,6 +667,16 @@ parcels$hct_id[parcels$tod_id == 100] <- 0
 parcels$hct_id[parcels$tod_id >= 101 & parcels$tod_id <= 105] <- 1
 parcels$hct_id[parcels$tod_id == 106] <- 2
 
+# Update the TOD ID for Ferry Terminal Corrections
+ferry_upd <- create_table_from_input("inputs",ferry_buffer_upd_file,"csv")
+cols <- c("parcel_id","ferry_id")
+setnames(ferry_upd,cols)
+parcels <- merge(parcels,ferry_upd, by = "parcel_id", all = TRUE)
+parcels$tod_id[parcels$ferry_id == 103 ] <- 103
+parcels$hct_id[parcels$ferry_id == 103 ] <- 1
+
+parcels$rgc_tod_id[parcels$ferry_id == 103 & parcels$rgc_tod_id != 105 ] <- 103
+
 # Add Cities to get Regional Geographies
 w_lk <- create_table_from_input("inputs","city","csv")
 parcels <- merge(parcels, w_lk, by = "parcel_id")
@@ -983,25 +999,6 @@ boardings_capita_rank_future <- calculate_rank(msa_tbl,"Boardings_per_Capita",99
 
 ```
 
-# Growth for Other Metro Areas {.tabset .tabset.fade .tabset-pills}
-MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
-
-## Population
-In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(pop_rank_today)` of 53 Metropolitan Statistical Areas (MSA's) in the United States with a population of at least one million people. Other MSA's with similar populations include San Diego, Minneapolis, Detroit and Tampa Bay. When you compare the `r toString(analysis_years[[2]])` forecast of population for the region, the population rank for the Central Puget Sound region would be #`r toString(pop_rank_future)` of 53 places today with a population more similar to places like Atlanta, Miami, Philadelphia and Washington DC.
-
-
-```{r plot_pop_charts, echo = FALSE}
-pop_chart
-
-```
-
-## Employment
-In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(job_rank_today)` of 53 MSA's for total jobs. Other MSA's with similar numbers of jobs include Detroit, Minneapolis, and Phoenix. When you compare the `r toString(analysis_years[[2]])` forecast of jobs for the region, the rank for the Central Puget Sound region would be #`r toString(job_rank_future)` of 53 places today with job totals more similar to places like Dallas, Houston, Philadelphia and Washington DC.
-
-```{r plot_job_charts, echo = FALSE}
-job_chart
-```
-
 ```{r scenario_calualtions, include=FALSE}
 wrk_measures <- c("population","employment","housing_units")
 results_by_type = NULL
@@ -1170,7 +1167,7 @@ for (i in my_list) {
 
 ```{r county-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list("#F05A28",'county_id_king',"King"),list("#8CC63E",'county_id_kitsap',"Kitsap"),list("#00A7A0",'county_id_pierce',"Pierce"),list("#91268F",'county_id_snohomish',"Snohomish"))
+areas_to_map <- list(list(psrc_colors[["King"]],'county_id_king',"King"),list(psrc_colors[["Kitsap"]],'county_id_kitsap',"Kitsap"),list(psrc_colors[["Pierce"]],'county_id_pierce',"Pierce"),list(psrc_colors[["Snohomish"]],'county_id_snohomish',"Snohomish"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1247,7 +1244,7 @@ for (i in my_list) {
 
 ```{r la-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list("#F05A28",'large_area_id_nw_snohomish',"NW Snohomish"),list("#8CC63E",'large_area_id_everett',"Everett"),list("#00A7A0",'large_area_id_sw_snohomish',"SW Snohomish"),list("#91268F",'large_area_id_snohomish_other',"Snohomish Other"), list("#76787A",'large_area_id_shoreline',"Shoreline"),list("#F05A28",'large_area_id_seattle',"Seattle"),list("#8CC63E",'large_area_id_eastside_king',"Eastside King"),list("#00A7A0",'large_area_id_sw_king',"SW King"),list("#91268F",'large_area_id_green_river',"Green River"), list("#76787A",'large_area_id_se_king',"SE King"),list("#F05A28",'large_area_id_king_other',"King Other"),list("#8CC63E",'large_area_id_tacoma',"Tacoma"),list("#00A7A0",'large_area_id_sw_pierce',"SW Pierce"),list("#91268F",'large_area_id_pierce_other',"Pierce Other"), list("#76787A",'large_area_id_peninsula',"Peninsula"),list("#F05A28",'large_area_id_south_kitsap',"South Kitsap"),list("#8CC63E",'large_area_id_central_kitsap',"Central Kitsap"),list("#00A7A0",'large_area_id_north_kitsap',"North Kitsap"))
+areas_to_map <- list(list(psrc_colors[["NW Snohomish"]],'large_area_id_nw_snohomish',"NW Snohomish"),list(psrc_colors[["Everett"]],'large_area_id_everett',"Everett"),list(psrc_colors[["SW Snohomish"]],'large_area_id_sw_snohomish',"SW Snohomish"),list(psrc_colors[["Snohomish Other"]],'large_area_id_snohomish_other',"Snohomish Other"), list(psrc_colors[["Shoreline"]],'large_area_id_shoreline',"Shoreline"),list(psrc_colors[["Seattle"]],'large_area_id_seattle',"Seattle"),list(psrc_colors[["Eastside King"]],'large_area_id_eastside_king',"Eastside King"),list(psrc_colors[["SW King"]],'large_area_id_sw_king',"SW King"),list(psrc_colors[["Green River"]],'large_area_id_green_river',"Green River"), list(psrc_colors[["SE King"]],'large_area_id_se_king',"SE King"),list(psrc_colors[["King Other"]],'large_area_id_king_other',"King Other"),list(psrc_colors[["Tacoma"]],'large_area_id_tacoma',"Tacoma"),list(psrc_colors[["SW Pierce"]],'large_area_id_sw_pierce',"SW Pierce"),list(psrc_colors[["Pierce Other"]],'large_area_id_pierce_other',"Pierce Other"), list(psrc_colors[["Peninsula"]],'large_area_id_peninsula',"Peninsula"),list(psrc_colors[["South Kitsap"]],'large_area_id_south_kitsap',"South Kitsap"),list(psrc_colors[["Central Kitsap"]],'large_area_id_central_kitsap',"Central Kitsap"),list(psrc_colors[["North Kitsap"]],'large_area_id_north_kitsap',"North Kitsap"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1324,7 +1321,7 @@ for (i in my_list) {
 
 ```{r ta-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list("#F05A28",'tod_id_lrt',"Light Rail"),list("#8CC63E",'tod_id_crt',"Commuter Rail"),list("#00A7A0",'tod_id_pof',"Passenger Only Ferry"),list("#91268F",'tod_id_brt',"Bus Rapid Transit"), list("#76787A",'tod_id_rgc',"Regional Growth Centers"))
+areas_to_map <- list(list(psrc_colors[["Light Rail"]],'tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'tod_id_pof',"Passenger Only Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1346,6 +1343,83 @@ for (i in my_list) {
   wrk_id <- 'tod_id'
   wrk_nms <- tod_names
   wrk_ord <- tod_order
+  r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_cap_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0("all_scenarios_job_capacity_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_remain_job_capacity_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_cap_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("Existing Capacity","Growth","Remaining Capacity","Percent Capacity Used")
+  summary_attributes <- c("People","Jobs")
+  out <- c(out, knitr::knit_child("tables-by-type-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Growth by RGC & Transit Area {.tabset .tabset.fade .tabset-pills}
+By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The table below illustrates the population and employment growth for the `r toString(scenario_names)` scenario summarized in this document by county and proximity to type of transit.
+
+```{r rgc-ta-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'rgc_tod_id'
+  wrk_nms <- rgc_tod_names
+  wrk_ord <- rgc_tod_order
+  r1 <- paste0(alternatives[[1]][[2]],"_2017_population_by_",wrk_id,"_",summary_geo)
+  r2 <- paste0(alternatives[[1]][[2]],"_2050_population_by_",wrk_id,"_",summary_geo)
+  r3 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
+  r4 <- paste0(alternatives[[1]][[2]],"_percent_pop_change_by_",wrk_id,"_",summary_geo)
+  r5 <- paste0(alternatives[[1]][[2]],"_2017_employment_by_",wrk_id,"_",summary_geo)
+  r6 <- paste0(alternatives[[1]][[2]],"_2050_employment_by_",wrk_id,"_",summary_geo)
+  r7 <- paste0(alternatives[[1]][[2]],"_job_change_by_",wrk_id,"_",summary_geo)
+  r8 <- paste0(alternatives[[1]][[2]],"_percent_job_change_by_",wrk_id,"_",summary_geo)
+  r9 <- paste0(alternatives[[1]][[2]],"_2017_jhr_by_",wrk_id,"_",summary_geo)
+  r10 <- paste0(alternatives[[1]][[2]],"_2050_jhr_by_",wrk_id,"_",summary_geo)
+  r11 <- paste0(alternatives[[1]][[2]],"_jhr_change_by_",wrk_id,"_",summary_geo)
+  r12 <- paste0(alternatives[[1]][[2]],"_percent_jhr_change_by_",wrk_id,"_",summary_geo)
+  summary_columns <- c("2017","2050","Absolute Change","% Change")
+  summary_attributes <- c("People","Jobs","Jobs-Housing Ratio")
+  out <- c(out, knitr::knit_child("tables-pie-by-type-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Area Map
+
+```{r rgc-ta-map-setup, include=FALSE}
+area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
+areas_to_map <- list(list(psrc_colors[["Light Rail"]],'rgc_tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'rgc_tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'rgc_tod_id_pof',"Passenger Only Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'rgc_tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'rgc_tod_id_rgc',"Regional Growth Centers"))
+working_map <- create_area_map(areas_to_map,area_directory)
+```
+
+```{r, echo=FALSE, results="asis"}
+working_map
+```
+
+# Capacity by RGC & Transit Area {.tabset .tabset.fade .tabset-pills}
+The table below illustrates the existing zoned capacity for people and jobs around the various transit area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
+
+```{r rgc-ta-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
+out <- NULL
+
+my_list <- list(1,2,3,4,5)
+
+for (i in my_list) {
+  summary_geo <- county_lookups[[2]][[i]]
+  header_names <- county_lookups[[2]][[i]]
+  wrk_id <- 'rgc_tod_id'
+  wrk_nms <- rgc_tod_names
+  wrk_ord <- rgc_tod_order
   r1 <- paste0("all_scenarios_pop_capacity_by_",wrk_id,"_",summary_geo)
   r2 <- paste0(alternatives[[1]][[2]],"_pop_change_by_",wrk_id,"_",summary_geo)
   r3 <- paste0(alternatives[[1]][[2]],"_remain_pop_capacity_by_",wrk_id,"_",summary_geo)
@@ -1400,7 +1474,7 @@ for (i in my_list) {
 
 ```{r hct-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list("#F05A28",'hct_id_hct',"High Capacity Transit"))
+areas_to_map <- list(list(psrc_colors[["High Capacity Transit"]],'hct_id_hct',"High Capacity Transit"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1477,7 +1551,7 @@ for (i in my_list) {
 
 ```{r regeo-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list("#F05A28",'rgeo_id_metro',"Metro Cities"),list("#8CC63E",'rgeo_id_core',"Core Cities"),list("#00A7A0",'rgeo_id_hct',"High Capacity Transit Cities"),list("#91268F",'rgeo_id_cities',"Cities & Towns"), list("#76787A",'rgeo_id_uu',"Urban Unicorporated"))
+areas_to_map <- list(list(psrc_colors[["Metro"]],'rgeo_id_metro',"Metro Cities"),list(psrc_colors[["Core"]],'rgeo_id_core',"Core Cities"),list(psrc_colors[["HCT"]],'rgeo_id_hct',"High Capacity Transit Cities"),list(psrc_colors[["Cities & Towns"]],'rgeo_id_cities',"Cities & Towns"), list(psrc_colors[["Urban Unincorporated"]],'rgeo_id_uu',"Urban Unincorporated"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1515,7 +1589,27 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Vehicle Miles Traveled per Capita
+# Growth for Other Metro Areas {.tabset .tabset.fade .tabset-pills}
+MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
+
+## Population
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(pop_rank_today)` of 53 Metropolitan Statistical Areas (MSA's) in the United States with a population of at least one million people. Other MSA's with similar populations include San Diego, Minneapolis, Detroit and Tampa Bay. When you compare the `r toString(analysis_years[[2]])` forecast of population for the region, the population rank for the Central Puget Sound region would be #`r toString(pop_rank_future)` of 53 places today with a population more similar to places like Atlanta, Miami, Philadelphia and Washington DC.
+
+
+```{r plot_pop_charts, echo = FALSE}
+pop_chart
+
+```
+
+## Employment
+In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(job_rank_today)` of 53 MSA's for total jobs. Other MSA's with similar numbers of jobs include Detroit, Minneapolis, and Phoenix. When you compare the `r toString(analysis_years[[2]])` forecast of jobs for the region, the rank for the Central Puget Sound region would be #`r toString(job_rank_future)` of 53 places today with job totals more similar to places like Dallas, Houston, Philadelphia and Washington DC.
+
+```{r plot_job_charts, echo = FALSE}
+job_chart
+```
+
+
+## VMT per Capita
 Miles driven per person have been declining in the Central Puget Sound Region for the past 20 years. VMT per day peaked in the late 1990's around 24 miles driven per person per day and has been fairly steady for the past 10 years at around 21 miles per person per day. Changes in land use and a continued diversification of travel options are key drivers behind a shortening of VMT per person,
 
 In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(vmt_rank_today)` of 53 MSA's for miles driven per person per day. Other MSA's with similar levels of daily VMT per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of miles driven for the region, the rank for the Central Puget Sound region would be #`r toString(vmt_rank_future)` of 53 places today with only New York City having fewer miles driven per day.
@@ -1524,14 +1618,14 @@ In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r 
 vmt_per_capita_chart
 ```
 
-# Transit Boardings
+## Transit Boardings
 In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(boardings_rank_today)` of 53 MSA's for transit boardings . Other MSA's with similar levels of Boardings per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of transit boardings for the region, the rank for the Central Puget Sound region would be #`r toString(boardings_rank_future)` of 53 places today with only New York City having more boardings per day.
 
 ```{r, plot_boardings_outputs, echo=FALSE}
 boardings_chart
 ```
 
-# Transit Boardings per Capita
+## Boardings per Capita
 In `r toString(analysis_years[[1]])`, the Central Puget Sound region ranked #`r toString(boardings_capita_rank_today)` of 53 MSA's for boardings per person per year. Other MSA's with similar levels of Boardings per capita include San Francisco, Chicago, and Tucson. When you compare the `r toString(analysis_years[[2]])` forecast of boardings per person for the region, the rank for the Central Puget Sound region would be #`r toString(boardings_capita_rank_future)` of 53 places today with only New York City having more boardings per day.
 
 ```{r, plot_boardings_capita_outputs, echo=FALSE}
@@ -1683,157 +1777,6 @@ bins <- c(0,2,5,10,15,20,25)
 
 for (i in seq_along(my_list)) {
   out <- c(out, knitr::knit_child("maps-by-station-child.Rmd"))
-}
-
-```
-
-`r paste(out, collapse="\n")`
-
-```{r rgc_setup, include=FALSE}
-
-# Clear out temporary data.tables
-rgc_parcels <- NULL
-wrk_measures <- c("Population","Employment")
-
-rgc_lookup <- create_table_from_input("inputs",rgc,"csv")
-wrk_parcels <- merge(parcels, rgc_lookup, by = "parcel_id")
-wrk_parcels <- wrk_parcels[,c('parcel_id','rgc_name','population_2017','population_2050','employment_2017','employment_2050')]
-
-# Calculate and store Measures by Geography Type
-  
-for (w_year in analysis_years){
-  w_p <- NULL
-  
-  # Trim down to only have year of interest data
-  orig_cols <- c("parcel_id",'rgc_name',paste0("population_",w_year),paste0("employment_",w_year))
-  w_p <- wrk_parcels[,..orig_cols]
-  nms <- c("parcel_id",'rgc_name','Population','Employment')
-  setnames(w_p,nms)
-  
-  # Create long list format for calculations
-  melt_vars <- c("parcel_id",'rgc_name')
-  meas_vars <- c("Population","Employment")
-  
-  w_p <- melt(w_p,id.vars = melt_vars, measure.vars = meas_vars)
-  w_p$scenario <- alternatives[[1]][[1]]
-  w_p$year <- w_year
-  
-  if (is.null(rgc_parcels)) {rgc_parcels <- w_p} else {rgc_parcels <- rbind(rgc_parcels,w_p)}
-}
-    
-# Create RGC Summary
-rgc_summary <- rgc_parcels[,.(results = sum(value)),by=.(rgc_name,variable,scenario,year)]
-rgc_summary <- rgc_summary[rgc_name != ""]
-
-# Calculate the Population and Employment Growth from the Base Year by Scenario
-for (files in alternatives) {
-  
-  base_att <- NULL
-  scen_att <- NULL
-  scen_delta <- NULL
-
-  for (lu_att in wrk_measures) {
-    wrk_scen <- alternatives[[1]][[1]]
-    
-    # Get Base Year Values by Station Area
-    base_att <- rgc_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[1]]]
-    base_att <- base_att[,c("rgc_name","results")]
-    setnames(base_att,c("rgc_name","base_year"))  
-
-    # Get Scenario Values by Station Area
-    scen_att <- rgc_summary[variable %in% lu_att & scenario %in% wrk_scen & year %in% analysis_years[[2]]]
-    scen_att <- scen_att[,c("rgc_name","results")]
-    setnames(scen_att,c("rgc_name","future_year"))
-
-    # Merge and Calculate the difference
-    scen_delta <- merge(base_att, scen_att, by = "rgc_name")
-    scen_delta$results <- scen_delta$future_year - scen_delta$base_year
-    scen_delta$variable <- paste0(lu_att," Growth")
-    scen_delta$scenario <- wrk_scen
-    scen_delta$year <- analysis_years[[2]]
-    scen_delta <- scen_delta[,c("rgc_name","variable","scenario","results","year")]
-
-    # Merge and Calculate the percentage difference
-    scen_percent <- merge(base_att, scen_att, by = "rgc_name")
-    scen_percent$results <- (scen_percent$future_year - scen_percent$base_year) / scen_percent$base_year
-    scen_percent$results[is.infinite(scen_percent$results)] <- 999
-    scen_percent$variable <- paste0(lu_att," % Change")
-    scen_percent$scenario <- wrk_scen
-    scen_percent$year <- analysis_years[[2]]
-    scen_percent <- scen_percent[,c("rgc_name","variable","scenario","results","year")]
-
-    # Merge and Calculate the share of the total difference
-    scen_share <- merge(base_att, scen_att, by = "rgc_name")
-    total_growth <- as.integer(colSums(scen_share[,'future_year']) - colSums(scen_share[,'base_year']))
-    scen_share$results <- (scen_share$future_year - scen_share$base_year) / total_growth
-    scen_share[is.na(scen_share)] <- 0
-    scen_share$variable <- paste0(lu_att," Share of Change")
-    scen_share$scenario <- wrk_scen
-    scen_share$year <- analysis_years[[2]]
-    scen_share <- scen_share[,c("rgc_name","variable","scenario","results","year")]
-        
-    rgc_summary <- rbind(rgc_summary,scen_delta)
-    rgc_summary <- rbind(rgc_summary,scen_percent)
-    rgc_summary <- rbind(rgc_summary,scen_share)
-  }
-}  
-
-```
-
-# Regional Growth Centers {.tabset .tabset.fade .tabset-pills}
-xxx
-
-## Total Growth within RGC's {.tabset .tabset.fade .tabset-pills}
-...
-
-```{r rgc-total-plots, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
-my_list <- list(1,2)
-metrics <- c("Population Growth","Employment Growth")
-num_typ <- "integer"
-num_dig <- 0
-bins <- c(0,2000,8000,32000,72000,128000,200000)
-
-for (i in seq_along(my_list)) {
-  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
-}
-
-```
-
-`r paste(out, collapse="\n")`
-
-## Percent Change within RGC's {.tabset .tabset.fade .tabset-pills}
-...
-
-```{r rgc-percent-plots, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
-my_list <- list(1,2)
-metrics <- c("Population % Change","Employment % Change")
-num_typ <- "percentage"
-num_dig <- 0
-bins <- c(0,25,50,75,100,150,500,1000,2500)
-
-for (i in seq_along(my_list)) {
-  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
-}
-
-```
-
-`r paste(out, collapse="\n")`
-
-## Share of Growth within RGC's {.tabset .tabset.fade .tabset-pills}
-...
-
-```{r rgc-share-plots, echo = FALSE, include = FALSE, results = 'asis'}
-out <- NULL
-my_list <- list(1,2)
-metrics <- c("Population Share of Change","Employment Share of Change")
-num_typ <- "percentage"
-num_dig <- 1
-bins <- c(0,2,5,10,15,20,25)
-
-for (i in seq_along(my_list)) {
-  out <- c(out, knitr::knit_child("maps-by-rgc-child.Rmd"))
 }
 
 ```

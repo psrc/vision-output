@@ -9,8 +9,8 @@ import time
 working_directory = os.path.join(os.getcwd(),'inputs','shapefiles')
 input_directory = os.path.join(os.getcwd(),'inputs')
 
-geo_id = 'large_area'
-lookup_file = os.path.join(input_directory,'large_area.csv')
+geo_id = 'rgc_tod'
+lookup_file = os.path.join(input_directory,'rgc_tod.csv')
 
 # Shapefiles
 parcel_file = os.path.join(working_directory,'prcl15_4k.shp')
@@ -32,6 +32,9 @@ start_of_production = time.time()
 
 print('Open CSV file in Pandas for Table Join to Parcels')
 wrk_lookup = pd.read_csv(lookup_file, sep = ',')
+
+#rgc_ids = pd.read_csv(os.path.join(input_directory,'rgs_id_to_name.csv'), sep = ',')
+#wrk_lookup = pd.merge(wrk_lookup,rgc_ids,on='rgc_name',suffixes=('_x','_y'),how='left')
 
 print('Join parcel lookup with parcel shapefile')
 merged = gp_table_join(wrk_lookup,parcel_file,"parcel_id")

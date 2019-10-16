@@ -1,5 +1,6 @@
 /Data
 /inputs
+/outputs
 *.Rhistory
 *.xlsx
 *.png
