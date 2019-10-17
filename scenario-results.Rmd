@@ -12,6 +12,20 @@ VISION 2050 is the shared regional plan for moving toward a sustainable future. 
 
 This document summarizes some of the key technical inputs for the VISION 2050 update. For more information on VISION 2050, please refer to https://www.psrc.org/vision.
 
+```{r inputs_to_code, include=FALSE}
+
+wrk_scenario <- "Grunt"
+analysis_years <- c(2017,2050)
+annualization <- 320
+network_buffer <- "yes"
+regional_geography_used <- "proposed"
+
+# Hard Coded Inputs for a few values
+ntd_boardings_2014 <- 209000000
+hpms_vmt_2014 <- 82300000
+hours_2050 <- 12735000
+
+```
 
 ```{r general_setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -35,17 +49,8 @@ library(rgeos)
 library(tidyverse)
 library(zoo)
 
-# Indicator File Directories
-wrk_scenario <- "Flash"
 results_folder <- ":/vision2050/opusgit/urbansim_data/data/psrc_parcel/runs/"
 us_nm <- Sys.getenv("USERNAME")
-
-analysis_years <- c(2017,2050)
-annualization <- 320
-
-# Flag to determine Network or Linear Buffer and Regional Geography Use
-network_buffer <- "yes"
-regional_geography_used <- "proposed"
 
 # Central Database name and server
 server_name <- "AWS-PROD-SQL\\COHO"
@@ -62,11 +67,6 @@ drive <- substr(as.character(current_run$Indicators), start=1,stop=1)
 mdl_srv <- paste0("awsmodel",as.character(current_run$`Run On:`))
 mdl_run <- as.character(current_run$`UrbanSim Run ID and Time Stamp`)
 parcel_file_path <- paste0(drive,results_folder,mdl_srv,"/",mdl_run,"/indicators/")
-
-# Hard Coded Inputs for a few values
-ntd_boardings_2014 <- 209000000
-hpms_vmt_2014 <- 82300000
-hours_2050 <- 12735000
 
 # Color Pallete using PSRC Colors
 psrc_colors <- c(
@@ -236,233 +236,7 @@ scenario_names <- NULL
   scenario_names <- c(scenario_names, files[[3]])
 }
 
-# Functions
-sum_table_values <- function(tbl, w_col, w_scen, w_var, w_geo, w_yr) {
-  
-  wrk_tot <- as.integer(tbl[scenario %in% w_scen & variable %in%  w_var & get(w_col) %in% w_geo & year %in% w_yr,sum(value)])
-  return(wrk_tot)
-}
-
-create_area_map <- function(geo_areas, w_directory) {
-
-  # First start Base Map
-  w_map <- leaflet() %>% addProviderTiles(providers$CartoDB.Positron, group="Base Map")
-  list_of_layers <- NULL
-
-  # Loop Over the List of Areas to Map and add as layers to the map
-  for (areas in geo_areas) {
-    w.shape <- readOGR(dsn=w_directory,layer=areas[[2]])
-    w_map <- w_map %>%
-        addPolygons(data=w.shape,
-                fillColor = areas[[1]],
-                color = areas[[1]],
-                fillOpacity = 0.7,
-                weight=1,
-                group=areas[[3]])
-    if(is.null(list_of_layers)) {list_of_layers <- list(areas[[3]])} else {list_of_layers <- append(list_of_layers,areas[[3]])}
-  }
-
-  # Now Add Layer Controls and Easy Buttons
-  w_map <- w_map %>%
-    addLayersControl(baseGroups = c("Base Map"),
-                    overlayGroups = list_of_layers,
-                    options = layersControlOptions(collapsed = FALSE)) %>%
-    addEasyButton(easyButton(
-      icon="fa-anchor", title="Bremerton",
-      onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
-    addEasyButton(easyButton(
-      icon="fa-amazon", title="Cross-Lake",
-      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
-    addEasyButton(easyButton(
-      icon="fa-plane", title="Everett",
-      onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
-    addEasyButton(easyButton(
-      icon="fa-glass", title="Tacoma",
-      onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
-    addEasyButton(easyButton(
-      icon="fa-globe", title="Region",
-      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
-  
-  return(w_map)
-}
-
-create_table_container <- function(cat_nms, scen_nms, metric_nms) {
-
-  wrk_container = htmltools::withTags(table(
-    class = 'display',
-    thead(
-      tr(
-        th(class = 'dt-center', rowspan = 3, cat_nms)
-      ),
-      tr(
-        lapply(scen_nms, function(x) th(class = 'dt-center', colspan =4, x))
-      ),
-          tr(
-        lapply(rep(metric_nms, length(scen_nms)), function(x) th(class = 'dt-center', x))
-      )
-    )
-  ))
-
-return(wrk_container)
-
-}
-
-create_station_area_tables <- function(tbl, alt_list,current_variable, tbl_view_len, w_type, w_digits) {
-
-  short_names <- NULL
-  for (files in alt_list) {
-    short_names <- c(short_names, files[[1]])
-    }
-
-  scenario_names <- NULL
-  for (files in alt_list) {
-    scenario_names <- c(scenario_names, files[[3]])
-    }
-
-  # Create Variable Specific Table by Scenario
-  wrk_summary <- tbl[variable %in% current_variable]
-  wrk_summary[,variable:=NULL]
-
-  s_tbl <- dcast(wrk_summary, station_name ~ scenario, value.var="results")
-  setcolorder(s_tbl,c("station_name",short_names))
-
-  clean_tbl <- datatable(s_tbl, rownames = FALSE, options = list(pageLength = tbl_view_len, columnDefs = list(list(className = 'dt-center', targets = 1:1))), colnames = c('Station Area', current_variable))
-
-  for (working_column in short_names) {
-    
-    if (w_type == "integer") {
-    clean_tbl <- clean_tbl %>% 
-      formatCurrency(working_column, "", digits = w_digits) %>%
-      formatStyle(working_column,`text-align` = 'center')
-    } else {
-    clean_tbl <- clean_tbl %>% 
-      formatPercentage(working_column,w_digits) %>%
-      formatStyle(working_column,`text-align` = 'center')
-    }
-    
-  }
-
-  return(clean_tbl)
-}
-
-create_rgc_tables <- function(tbl, alt_list,current_variable, tbl_view_len, w_type, w_digits) {
-
-  short_names <- NULL
-  for (files in alt_list) {
-    short_names <- c(short_names, files[[1]])
-    }
-
-  scenario_names <- NULL
-  for (files in alt_list) {
-    scenario_names <- c(scenario_names, files[[3]])
-    }
-
-  # Create Variable Specific Table by Scenario
-  wrk_summary <- tbl[variable %in% current_variable]
-  wrk_summary[,variable:=NULL]
-
-  s_tbl <- dcast(wrk_summary, rgc_name ~ scenario, value.var="results")
-  setcolorder(s_tbl,c("rgc_name",short_names))
-
-  clean_tbl <- datatable(s_tbl, rownames = FALSE, options = list(pageLength = tbl_view_len, columnDefs = list(list(className = 'dt-center', targets = 1:1))), colnames = c('Regional Growth Center', current_variable))
-
-  for (working_column in short_names) {
-    
-    if (w_type == "integer") {
-    clean_tbl <- clean_tbl %>% 
-      formatCurrency(working_column, "", digits = w_digits) %>%
-      formatStyle(working_column,`text-align` = 'center')
-    } else {
-    clean_tbl <- clean_tbl %>% 
-      formatPercentage(working_column,w_digits) %>%
-      formatStyle(working_column,`text-align` = 'center')
-    }
-    
-  }
-
-  return(clean_tbl)
-}
-
-create_table_from_input <- function(fdir,fname,ftype) {
-  w_fname <- paste0(getwd(),"/",fdir,"/",fname,".",ftype)
-  
-  if (ftype == "tab" | ftype == "tsv" ) {wtbl <- read.table(w_fname, sep = '\t',header = TRUE)} 
-  
-  else if (ftype == "dbf") {wtbl <- read.dbf(w_fname)} 
-  
-  else  {wtbl <- read.csv(w_fname)}
-  
-  setDT(wtbl)
-  return(wtbl)
-}
-
-create_bar_charts <- function(current_tbl, current_metric) {
-  wrk_tbl <- current_tbl[variable %in% current_metric]
-  ylimit <- max(wrk_tbl$value)
-  setorder(wrk_tbl,value,value)
-
-  labels <- paste0("<b>","Metro Area: ", "</b>",wrk_tbl$name,
-                 "<b> <br>",paste0(current_metric,": "), "</b>",prettyNum(round(wrk_tbl$value, 0), big.mark = ",")) %>% lapply(htmltools::HTML)
-
-  wrk_chart <- ggplot(wrk_tbl, aes(x = reorder(name,value), y= value, fill = as.factor(plot_id),text=labels)) + 
-  geom_bar(stat = "identity") +
-  theme_void() +
-  scale_y_continuous(labels = comma)+
-  scale_fill_manual(values=bar_colors)+
-  theme(legend.position = "none",
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        axis.line = element_blank())
-
-  wrk_chart <- ggplotly(wrk_chart, tooltip = c("text"))
-  return(wrk_chart)
-}
-
-calculate_rank <- function(current_tbl, current_metric, current_msa) {
-  wrk_tbl <- current_tbl[variable %in% current_metric]
-  wrk_tbl <- wrk_tbl[order(-value)]
-  wrk_tbl$rank <- NA
-  wrk_tbl$rank <- 1:nrow(wrk_tbl)
-
-  wrk_rank <- wrk_tbl$rank[wrk_tbl$msa_id==current_msa]
-  return(wrk_rank)
-}
-
-create_line_chart <- function(table,xcolumn, ycolumn, Items, ylimit, yname,  xname, wrk_title) {
-  
-  wrk_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn, group= Items, colour= Items)) +
-  geom_line(size=1) +
-  scale_y_continuous(labels = comma, name = yname, limits = c(0, ylimit))+
-  theme_light()+
-  xlab(xname)+
-  ggtitle(wrk_title)+
-  theme(plot.title = element_text(family = "Trebuchet MS", color="#76787A", 
-                              size=16, 
-                              margin = margin(10, 0, 10, 0)),
-    legend.position = "top",
-    legend.title = element_blank(),
-  )
-  
-  wrk_chart <- ggplotly(wrk_chart) %>% 
-    layout(legend = list(orientation = "h", x = 1, xanchor = "center", y = -0.2))
-  
-  return(wrk_chart)
-}
-
-table_from_db <- function(srv_nm,db_nm,tbl_nm) {
-  
-  db_con <- dbConnect(odbc::odbc(),
-    driver = "SQL Server",
-    server = srv_nm,
-    database = db_nm,
-    trusted_connection = "yes"
-  )
-  
-  w_tbl <- dbReadTable(db_con,SQL(tbl_nm))
-  odbc::dbDisconnect(db_con)
-  return(w_tbl)
-}
+source("functions.R")
 
 # Basic Scenario Assumptions
 if (is.na(current_run$`Fully Int`)) {integrated_run <- "No"} else {integrated_run <- "Yes"}
@@ -477,14 +251,6 @@ if (is.na(current_run$`Special model used in  Alloc (LUV) Years`)) {luv_dm <- "O
 **Buffer Type: ** `r toString(buffer)`   
 **LUV Year Developer Model: ** `r toString(luv_dm)`   
 **Location of UrbanSim Indicator Files: ** `r toString(parcel_file_path)`   
-
-```{r soundcast_information, include=FALSE}
-
-# Create a full trips file
-#trips <- NULL
-#trips <- create_table_from_input(paste0("inputs/",wrk_scenario),sc_trips,"csv")
-
-```
 
 ```{r macroforecast_information, include=FALSE}
 
@@ -669,13 +435,16 @@ parcels$hct_id[parcels$tod_id == 106] <- 2
 
 # Update the TOD ID for Ferry Terminal Corrections
 ferry_upd <- create_table_from_input("inputs",ferry_buffer_upd_file,"csv")
-cols <- c("parcel_id","ferry_id")
+cols <- c("parcel_id","updated_id")
 setnames(ferry_upd,cols)
 parcels <- merge(parcels,ferry_upd, by = "parcel_id", all = TRUE)
-parcels$tod_id[parcels$ferry_id == 103 ] <- 103
-parcels$hct_id[parcels$ferry_id == 103 ] <- 1
 
-parcels$rgc_tod_id[parcels$ferry_id == 103 & parcels$rgc_tod_id != 105 ] <- 103
+parcels$tod_id[parcels$updated_id == 101 ] <- 101
+parcels$tod_id[parcels$updated_id == 103 ] <- 103
+parcels$hct_id[!is.na(parcels$ferry_id)] <- 1
+
+parcels$rgc_tod_id[parcels$updated_id == 101 & parcels$rgc_tod_id != 105 ] <- 101
+parcels$rgc_tod_id[parcels$updated_id == 103 & parcels$rgc_tod_id != 105 ] <- 103
 
 # Add Cities to get Regional Geographies
 w_lk <- create_table_from_input("inputs","city","csv")
@@ -722,6 +491,18 @@ for (w_years in analysis_years) {
   # Join with TOD Flags
   parcels <- merge(parcels, w_tbl, by = "parcel_id")
 }
+
+# Output parcel file to csv for creation of shepfiles for automated mapping
+w_fname <- paste0(getwd(),'/inputs/parcel_lokups.csv')
+fwrite(parcels, w_fname)
+```
+
+```{r create_lookup_shapefiles, include = FALSE}
+library(reticulate)
+
+# Run python code that processes data for import to elmer
+source_python("geography-to-parcels.py")
+create_geography_files()
 
 ```
 
@@ -1127,8 +908,13 @@ for (i in seq(1:5)) {
 }
 
 ```
+# Land Use Summary {.tabset .tabset.fade .tabset-pills}
+The charts and tables below summarize various UrbanSim outputs by various summary geographies
 
-# Growth by County {.tabset .tabset.fade .tabset-pills}
+## County {.tabset .tabset.fade .tabset-pills}
+Of the four counties in the region, King county is forecasted to ...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, xxx.
 
 ```{r county-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1163,7 +949,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Area Map
+#### Map
 
 ```{r county-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
@@ -1175,7 +961,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity by County {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs by county and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r county-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1205,7 +991,10 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth by Large Area {.tabset .tabset.fade .tabset-pills}
+## Large Area {.tabset .tabset.fade .tabset-pills}
+...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, xxx.
 
 ```{r la-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1240,7 +1029,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Area Map
+#### Map
 
 ```{r la-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
@@ -1252,7 +1041,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity by Large Area {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs by large area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r la-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1282,7 +1071,10 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth by Transit Area {.tabset .tabset.fade .tabset-pills}
+## TOD Area {.tabset .tabset.fade .tabset-pills}
+...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The table below illustrates the population and employment growth for the `r toString(scenario_names)` scenario summarized in this document by county and proximity to type of transit.
 
 ```{r ta-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1317,11 +1109,11 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Area Map
+#### Map
 
 ```{r ta-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list(psrc_colors[["Light Rail"]],'tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'tod_id_pof',"Passenger Only Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'tod_id_rgc',"Regional Growth Centers"))
+areas_to_map <- list(list(psrc_colors[["Light Rail"]],'tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'tod_id_ferry',"Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1329,7 +1121,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity by Transit Area {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs around the various transit area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r ta-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1359,7 +1151,10 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth by RGC & Transit Area {.tabset .tabset.fade .tabset-pills}
+## RGC TOD Area {.tabset .tabset.fade .tabset-pills}
+...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, more than 100 light rail and streetcar stations are planned in the region. In addition, every county has plans for bus rapid transit and several are planning for commuter rail and passenger-only ferry service expansion. The planning for this integrated regional transit network has been on-going and the latest blueprint for it was adopted in the Regional Transportation Plan (RTP) update in 2018. The table below illustrates the population and employment growth for the `r toString(scenario_names)` scenario summarized in this document by county and proximity to type of transit.
 
 ```{r rgc-ta-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1394,11 +1189,11 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Area Map
+#### Map
 
 ```{r rgc-ta-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
-areas_to_map <- list(list(psrc_colors[["Light Rail"]],'rgc_tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'rgc_tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'rgc_tod_id_pof',"Passenger Only Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'rgc_tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'rgc_tod_id_rgc',"Regional Growth Centers"))
+areas_to_map <- list(list(psrc_colors[["Light Rail"]],'rgc_tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'rgc_tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'rgc_tod_id_ferry',"Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'rgc_tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'rgc_tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
@@ -1406,7 +1201,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity by RGC & Transit Area {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs around the various transit area types and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r rgc-ta-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1436,7 +1231,10 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth near HCT {.tabset .tabset.fade .tabset-pills}
+## HCT {.tabset .tabset.fade .tabset-pills}
+...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 `r toString(scenario_names)` scenario, placed xx percent of the population growth and xx of the employment growth near high capacity transit. 
 
 ```{r county-hct-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1470,7 +1268,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Area Map
+#### Map
 
 ```{r hct-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
@@ -1482,7 +1280,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity near HCT {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs around high capacity transit and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r county-capacity-hct-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1512,7 +1310,10 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth by Regional Geograpghy {.tabset .tabset.fade .tabset-pills}
+## Regional Geography {.tabset .tabset.fade .tabset-pills}
+...
+
+### Growth {.tabset .tabset.fade .tabset-pills}
 By `r toString(analysis_years[[2]])`, xxx.
 
 ```{r rgeo-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}
@@ -1547,7 +1348,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Regional Geography Map
+#### Map
 
 ```{r regeo-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
@@ -1559,7 +1360,7 @@ working_map <- create_area_map(areas_to_map,area_directory)
 working_map
 ```
 
-# Capacity by Regional Geography {.tabset .tabset.fade .tabset-pills}
+### Capacity {.tabset .tabset.fade .tabset-pills}
 The table below illustrates the existing zoned capacity for people and jobs around the various regional geographies and how much of that capcity would be utilized if the growth between `r toString(analysis_years[[1]])` and `r toString(analysis_years[[2]])` occurred as analyzed in this scenario.
 
 ```{r rgeo-capacity-growth-tables, echo = FALSE, include = FALSE, results = 'asis'}

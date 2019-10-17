@@ -71,7 +71,7 @@ wrk_pie <- ggplot(plot_tbl, aes(x = "", y = value, fill = Area)) +
 wrk_pie <- wrk_pie + facet_grid(cols = vars(variable))
 ```
 
-## `r header_names`
+#### `r header_names`
 
 ```{r, echo=FALSE, results="asis"}
 clean_tbl

@@ -30,7 +30,7 @@ for (working_column in percent_columns) {
 
 ```
 
-## `r header_names`
+#### `r header_names`
 
 ```{r, echo=FALSE, results="asis"}
 clean_tbl
