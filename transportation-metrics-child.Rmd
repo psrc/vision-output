@@ -3,21 +3,33 @@ title: "transportation-metrics-child"
 output: html_document
 ---
 ```{r, include=FALSE}
+wrk_tbl <- NULL
 
-base_val <- as.numeric(base_sc[`Data Item` %in% w_att & Geography %in% w_geo & Grouping %in% w_grp,sum(Value)])
+for (atts in w_att) {
+  interim <- NULL
+  
+  for (geos in w_geo) {
 
-scen_val <- as.numeric(scen_sc[`Data Item` %in% w_att & Geography %in% w_geo & Grouping %in% w_grp,sum(Value)])
+    base_val <- as.numeric(base_sc[`Data Item` %in% atts & Geography %in% geos & Grouping %in% w_grp,sum(Value)])
+    scen_val <- as.numeric(scen_sc[`Data Item` %in% atts & Geography %in% geos & Grouping %in% w_grp,sum(Value)])
 
-dlta_val <- scen_val - base_val
-perc_val <- dlta_val / base_val
-
-wrk_tbl <- data.table(`Measure`=measures[[1]],`Today`=base_val,`2050`=scen_val,`Delta`=dlta_val,`% Change`=perc_val)
-
+    dlta_val <- scen_val - base_val
+    perc_val <- dlta_val / base_val
+    
+    if (length(w_geo) >1) {meas_title <- geos} else {meas_title <- atts}
+  
+    interim <- data.table(`Measure`=meas_title,`Today`=base_val,`2050`=scen_val,`Delta`=dlta_val,`% Change`=perc_val)
+    if (is.null(wrk_tbl)) {wrk_tbl <- interim} else {wrk_tbl <- rbind(wrk_tbl,interim)}
+  }
+}
+  
 numeric_columns <- c('Today','2050','Delta')
 percent_columns <- c('% Change')
 
+num_data_cols <- length(summary_attributes) * length(summary_columns)
+
 measure_table_container <- create_table_container('Measure', summary_attributes, summary_columns)
-clean_tbl <- datatable(wrk_tbl, container = measure_table_container, rownames = FALSE, options = list(pageLength = 10, columnDefs = list(list(className = 'dt-center', targets =1:4))))
+clean_tbl <- datatable(wrk_tbl, container = measure_table_container, rownames = FALSE, options = list(pageLength = 10, columnDefs = list(list(className = 'dt-center', targets =1:num_data_cols))))
 
 if (output_type == "integer") {
 
@@ -44,30 +56,29 @@ for (working_column in percent_columns) {
 # Create Bar Chart
 bar_tbl <- wrk_tbl[,c("Measure","Today","2050")]
 var_levels <- c("Today","2050")
-plot_tbl <- melt(bar_tbl, id.vars=c('Measure'), variable.name='Year', value.name = measures[[2]])
+plot_tbl <- melt(bar_tbl, id.vars=c('Measure'), variable.name='Year', value.name = 'value')
 
-labels <- paste0("<b> <br>",paste0(measures[[2]],": "), "</b>",prettyNum(round(plot_tbl[,get(measures[[2]])], 0), big.mark = ",")) %>% lapply(htmltools::HTML)
-
-
-wrk_chart <-ggplot(data=plot_tbl, aes(x=Year, y=get(measures[[2]]), fill = Year,text=labels)) +
-  geom_bar(stat="identity") +
-  theme_minimal() +
-  scale_y_continuous(labels = comma)+
+wrk_chart <- ggplot(plot_tbl, aes(fill=Year, y=value, x=Year), text=labels) + geom_bar(stat="identity") +
+  theme_light()+
   scale_fill_manual(values=bar_colors)+
-  theme(legend.position = "none",
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        axis.line = element_blank())+
-  ylab(measures[[2]])
+  scale_y_continuous(labels = comma)+
+  theme(legend.position="bottom", legend.title = 
+    element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank())
 
-wrk_chart <- ggplotly(wrk_chart, tooltip = c("text"))
+wrk_chart <- wrk_chart + facet_wrap(~Measure, scales = "free")
+wrk_chart <- ggplotly(wrk_chart) %>% 
+  layout(legend = list(orientation = "h", xanchor = "center", x = 0.60, y = -0.1))
+
+# Figure out how many charts we have to figure out size
+if (length(w_geo)>1) {num_measures <- length(w_geo)} else {num_measures <- length(w_att)}
+if (num_measures == 1) {fwid <- 3} else if(num_measures == 2) {fwid <- 6} else {fwid <- 10}
+if (length(w_geo)>1) {fhght <- 4 * ceiling((length(w_geo)/3))} else {fhght <- 4 * ceiling((length(w_att)/3))}
 
 ```
 
 ### `r measures[[1]]`
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", fig.width=fwid, fig.height=fhght}
 clean_tbl
 
 wrk_chart

@@ -996,7 +996,6 @@ for (i in my_list) {
 `r paste(out, collapse="\n")`
 
 #### Map
-
 ```{r county-area-map-setup, include=FALSE}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["King"]],'county_id_king',"King"),list(psrc_colors[["Kitsap"]],'county_id_kitsap',"Kitsap"),list(psrc_colors[["Pierce"]],'county_id_pierce',"Pierce"),list(psrc_colors[["Snohomish"]],'county_id_snohomish',"Snohomish"))
@@ -1447,33 +1446,35 @@ out <- NULL
 base_sc <- setDT(read_excel(paste0(getwd(),"/inputs/",soundcast,".xlsx"),sheet = "DSEIS-Base-2014"))
 scen_sc <- setDT(read_excel(paste0(getwd(),"/inputs/",soundcast,".xlsx"),sheet = wrk_scenario))
 
-travel_measures <- list(list("CO2","Daily CO2 Equivalent Emissions"),list("CO","Daily CO Emissions"), list("NOx","Daily NOx Emissions"), list("VOC","Daily VOCs Emissions"), list("PM10","Daily PM 10 Emissions"), list("PM25","Daily PM 2.5 Emissions"))
+travel_measures <- list(list("Region","Regional"))
+#travel_measures <- list(list("CO2","Daily CO2 Equivalent Emissions"),list("CO","Daily CO Emissions"), list("NOx","Daily NOx Emissions"), list("VOC","Daily VOCs Emissions"), list("PM10","Daily PM 10 Emissions"), list("PM25","Daily PM 2.5 Emissions"))
 
 for (measures in travel_measures) {
-  summary_attributes <- c(measures[[2]])
+  summary_attributes <- c('Air Quality Metrics by Year')
   summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- measures[[2]]
-  w_geo <- "Regional"
+  w_att <- list('Daily CO2 Equivalent Emissions','Daily CO Emissions', 'Daily NOx Emissions', 'Daily VOCs Emissions', 'Daily PM 10 Emissions', 'Daily PM 2.5 Emissions')
+  w_geo <- list("Regional")
   w_grp <- "Total"
   output_type <- "integer"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
 }
+
 ```
 
 `r paste(out, collapse="\n")`
 
-## VMT {.tabset .tabset.fade .tabset-pills}
+## Vehicles {.tabset .tabset.fade .tabset-pills}
 xxx
-```{r vmt, include=FALSE}
+```{r vehicle_summaries, include=FALSE}
 out <- NULL
 
 travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
 
 for (measures in travel_measures) {
-  summary_attributes <- c('Daily Vehicle Miles Traveled')
+  summary_attributes <- c('Vehicle Metrics by Year')
   summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- 'Daily VMT'
-  w_geo <- measures[[2]]
+  w_att <- list('Daily VMT','Daily VHT', 'Daily Delay')
+  w_geo <- list(measures[[2]])
   w_grp <- "Total"
   output_type <- "integer"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
@@ -1482,78 +1483,18 @@ for (measures in travel_measures) {
 
 `r paste(out, collapse="\n")`
 
-## VHT {.tabset .tabset.fade .tabset-pills}
+## Trucks {.tabset .tabset.fade .tabset-pills}
 xxx
-```{r vht, include=FALSE}
-out <- NULL
-
-travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
-
-for (measures in travel_measures) {
-  summary_attributes <- c('Daily Vehicle Hours Traveled')
-  summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- 'Daily VHT'
-  w_geo <- measures[[2]]
-  w_grp <- "Total"
-  output_type <- "integer"
-  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
-}
-```
-
-`r paste(out, collapse="\n")`
-
-## Vehicle Delay {.tabset .tabset.fade .tabset-pills}
-xxx
-```{r vhd, include=FALSE}
-out <- NULL
-
-travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
-
-for (measures in travel_measures) {
-  summary_attributes <- c('Daily Vehicle Hours of Delay')
-  summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- 'Daily Delay'
-  w_geo <- measures[[2]]
-  w_grp <- "Total"
-  output_type <- "integer"
-  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
-}
-```
-
-`r paste(out, collapse="\n")`
-
-## Medium Truck Delay {.tabset .tabset.fade .tabset-pills}
-xxx
-```{r mt_delay, include=FALSE}
+```{r truck_summaries, include=FALSE}
 out <- NULL
 
 travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"))
 
 for (measures in travel_measures) {
-  summary_attributes <- c('Daily Medium Truck Hours of Delay')
+  summary_attributes <- c('Truck Metrics by Year')
   summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- 'Daily Medium Truck Delay'
-  w_geo <- measures[[2]]
-  w_grp <- "Total"
-  output_type <- "integer"
-  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
-}
-```
-
-`r paste(out, collapse="\n")`
-
-## Heavy Truck Delay {.tabset .tabset.fade .tabset-pills}
-xxx
-```{r ht_delay, include=FALSE}
-out <- NULL
-
-travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"))
-
-for (measures in travel_measures) {
-  summary_attributes <- c('Daily Heavy Truck Hours of Delay')
-  summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- 'Daily Heavy Truck Delay'
-  w_geo <- measures[[2]]
+  w_att <- list('Daily Medium Truck Delay','Daily Heavy Truck Delay')
+  w_geo <- list(measures[[2]])
   w_grp <- "Total"
   output_type <- "integer"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
@@ -1569,14 +1510,13 @@ xxx
 ```{r boardings-by-op, include=FALSE}
 out <- NULL
 
-travel_measures <- list(list("CT","Community Transit"),list("ET","Everett Transit"), list("KCM","King County Metro"), list("KT","Kitsap Transit"), list("PT","Pierce Transit"),list("ST","Sound Transit"),list("WSF","Washington Ferries"),list("Region","Regional"))
-
+travel_measures <- list(list("Region","Regional"))
 
 for (measures in travel_measures) {
   summary_attributes <- c(measures[[2]])
   summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- "Daily Transit Boardings"
-  w_geo <- measures[[2]]
+  w_att <- list("Daily Transit Boardings")
+  w_geo <- list("Community Transit","Everett Transit","King County Metro", "Kitsap Transit","Pierce Transit","Sound Transit","Washington Ferries","Regional")
   w_grp <- "Total"
   output_type <- "integer"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
@@ -1586,7 +1526,7 @@ for (measures in travel_measures) {
 
 `r paste(out, collapse="\n")`
 
-## Commute Mode Share for Transit {.tabset .tabset.fade .tabset-pills}
+## Transit Mode Share {.tabset .tabset.fade .tabset-pills}
 xxx
 ```{r comm-trn, include=FALSE}
 out <- NULL
@@ -1596,29 +1536,8 @@ travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"
 for (measures in travel_measures) {
   summary_attributes <- c(measures[[2]])
   summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- "Commute Trip Mode Share"
-  w_geo <- measures[[2]]
-  w_grp <- "Transit"
-  output_type <- "percentage"
-  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
-}
-
-```
-
-`r paste(out, collapse="\n")`
-
-## Non-Commute Mode Share for Transit {.tabset .tabset.fade .tabset-pills}
-xxx
-```{r non-comm-trn, include=FALSE}
-out <- NULL
-
-travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
-
-for (measures in travel_measures) {
-  summary_attributes <- c(measures[[2]])
-  summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- "Non-Commute Trip Mode Share"
-  w_geo <- measures[[2]]
+  w_att <- list("Commute Trip Mode Share","Non-Commute Trip Mode Share")
+  w_geo <- list(measures[[2]])
   w_grp <- "Transit"
   output_type <- "percentage"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
