@@ -1,0 +1,74 @@
+---
+title: "transportation-metrics-child"
+output: html_document
+---
+```{r, include=FALSE}
+
+base_val <- as.numeric(base_sc[`Data Item` %in% w_att & Geography %in% w_geo & Grouping %in% w_grp,sum(Value)])
+
+scen_val <- as.numeric(scen_sc[`Data Item` %in% w_att & Geography %in% w_geo & Grouping %in% w_grp,sum(Value)])
+
+dlta_val <- scen_val - base_val
+perc_val <- dlta_val / base_val
+
+wrk_tbl <- data.table(`Measure`=measures[[1]],`Today`=base_val,`2050`=scen_val,`Delta`=dlta_val,`% Change`=perc_val)
+
+numeric_columns <- c('Today','2050','Delta')
+percent_columns <- c('% Change')
+
+measure_table_container <- create_table_container('Measure', summary_attributes, summary_columns)
+clean_tbl <- datatable(wrk_tbl, container = measure_table_container, rownames = FALSE, options = list(pageLength = 10, columnDefs = list(list(className = 'dt-center', targets =1:4))))
+
+if (output_type == "integer") {
+
+  for (working_column in numeric_columns) {
+    clean_tbl <- clean_tbl %>% 
+      formatCurrency(working_column, "", digits = 0) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }
+  
+} else {
+  for (working_column in numeric_columns) {
+    clean_tbl <- clean_tbl %>% 
+      formatPercentage(working_column,1) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }
+}
+  
+for (working_column in percent_columns) {
+    clean_tbl <- clean_tbl %>% 
+      formatPercentage(working_column,0) %>%
+      formatStyle(working_column,`text-align` = 'center')
+}
+
+# Create Bar Chart
+bar_tbl <- wrk_tbl[,c("Measure","Today","2050")]
+var_levels <- c("Today","2050")
+plot_tbl <- melt(bar_tbl, id.vars=c('Measure'), variable.name='Year', value.name = measures[[2]])
+
+labels <- paste0("<b> <br>",paste0(measures[[2]],": "), "</b>",prettyNum(round(plot_tbl[,get(measures[[2]])], 0), big.mark = ",")) %>% lapply(htmltools::HTML)
+
+
+wrk_chart <-ggplot(data=plot_tbl, aes(x=Year, y=get(measures[[2]]), fill = Year,text=labels)) +
+  geom_bar(stat="identity") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)+
+  scale_fill_manual(values=bar_colors)+
+  theme(legend.position = "none",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_blank())+
+  ylab(measures[[2]])
+
+wrk_chart <- ggplotly(wrk_chart, tooltip = c("text"))
+
+```
+
+### `r measures[[1]]`
+
+```{r, echo=FALSE, results="asis"}
+clean_tbl
+
+wrk_chart
+```

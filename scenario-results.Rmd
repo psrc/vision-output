@@ -14,16 +14,31 @@ This document summarizes some of the key technical inputs for the VISION 2050 up
 
 ```{r inputs_to_code, include=FALSE}
 
-wrk_scenario <- "Grunt"
+wrk_scenario <- "Wild Bill"
 analysis_years <- c(2017,2050)
 annualization <- 320
+travel_model_base_year <- 2014
 network_buffer <- "yes"
 regional_geography_used <- "proposed"
 
-# Hard Coded Inputs for a few values
-ntd_boardings_2014 <- 209000000
-hpms_vmt_2014 <- 82300000
+# Service Hours from Soundcast
 hours_2050 <- 12735000
+
+# Central Database name and server
+server_name <- "AWS-PROD-SQL\\COHO"
+database_name <- "Sandbox"
+
+results_folder <- ":/vision2050/opusgit/urbansim_data/data/psrc_parcel/runs/"
+
+# Values for MSA Comparisons
+base_month <- 5
+area_type <- "statistical area"
+pop_threshold <- 1000000
+
+transit_variables <- c("UPT","VRH")
+psrc_uza <- c(14,180)
+
+sister_msa <- c(14460,41860,12060,33100,37980,47900,26420,19100)
 
 ```
 
@@ -49,12 +64,7 @@ library(rgeos)
 library(tidyverse)
 library(zoo)
 
-results_folder <- ":/vision2050/opusgit/urbansim_data/data/psrc_parcel/runs/"
 us_nm <- Sys.getenv("USERNAME")
-
-# Central Database name and server
-server_name <- "AWS-PROD-SQL\\COHO"
-database_name <- "Sandbox"
 
 # Model Run Tracking file on TEAMS
 run_track_file <- paste0('C:/Users/',us_nm,'/Puget Sound Regional Council/v2050 scenarios - Modeling and run tracking/model_run_tracking.xlsx')
@@ -121,15 +131,9 @@ bar_colors <- c(
     "0" = "#BBBDC0",
     "1" = "#F05A28",
     "2" = "#8CC63E",
-    "3" = "#00A7A0")
-
-base_month <- 5
-area_type <- "statistical area"
-pop_threshold <- 1000000
-
-transit_variables <- c("UPT","VRH")
-
-sister_msa <- c(14460,41860,12060,33100,37980,47900,26420,19100)
+    "3" = "#00A7A0",
+    "Today" = "#BBBDC0",
+    "2050" = "#F05A28")
 
 # Parcel Capacity File
 cap_file <- "parcel_level_capacity"
@@ -293,6 +297,8 @@ region_job_chart <- create_line_chart(working_data,working_data$year,working_dat
 job_sectors <- c("Const/Res","FIRE","Manufacturing","Retail","Services","WTU","Government","Education","Uniformed Military")
 working_data <- macro_forecast[category %in% "Estimated Total Employment" & variable %in% job_sectors & year %in% working_years]
 region_sector_chart <- create_line_chart(working_data,working_data$year,working_data$value,working_data$variable,2000000,"Total Employment","Year","Regional Employment by Sector")
+
+
 ```
 
 # Regional Macroeconomic Forecast {.tabset .tabset.fade .tabset-pills}
@@ -501,8 +507,8 @@ fwrite(parcels, w_fname)
 library(reticulate)
 
 # Run python code that processes data for import to elmer
-source_python("geography-to-parcels.py")
-create_geography_files()
+#source_python("geography-to-parcels.py")
+#create_geography_files()
 
 ```
 
@@ -511,12 +517,50 @@ create_geography_files()
 sc_tbl <- NULL
 sc_outputs <- NULL
 
+# Get the Model Base Year Transit Boardings, VMT and Service Hours
+vmt_obs <- table_from_db(server_name,database_name,"Craig.regional_hpms_vmt")
+setDT(vmt_obs)
+hpms_vmt_base <- as.integer(vmt_obs[`year` %in% travel_model_base_year & geography %in% "Region" & category %in% "daily vehicle miles traveled",sum(value)])
+
+# Calculate Boardings and Hours by Urban Area to join with MSA Population via the Urban Area to MSA IDs
+urban_areas <- NULL
+
+transit <- table_from_db(server_name,database_name,"Craig.ntd_monthly_transit_data")
+setDT(transit)
+
+for (vars in transit_variables) {
+  wrk_tbl <- transit[attribute %in% vars]
+
+  # Get Base Year Data and remove Demand Response data
+  wrk_tbl <- wrk_tbl[year(date) %in% travel_model_base_year]
+  wrk_tbl <- wrk_tbl[modes != "DR" | modes != "DT" | modes != "MO" | modes != "MG" | modes != "VP"]
+  wrk_tbl[is.na(wrk_tbl)] <- 0
+  col_keep <- c("uza_code","value")
+  wrk_tbl <- wrk_tbl[,..col_keep]
+  nms <- c("uza_id",vars)
+  setnames(wrk_tbl,nms)
+
+  # Aggregate UZA and join with UZA/MSA table
+  wrk_uza <- aggregate(wrk_tbl, by=list(wrk_tbl$uza_id),FUN=sum)
+  setDT(wrk_uza)
+  nms <- c("uza_id","uza_2",vars)
+  setnames(wrk_uza,nms)
+  fcols <- c("uza_id",vars)
+  wrk_uza <- wrk_uza[,..fcols]
+  
+  if (is.null(urban_areas)) {urban_areas <- wrk_uza} else {urban_areas <- merge(urban_areas, wrk_uza, by = "uza_id")}
+
+}
+
+ntd_boardings_base <- as.integer(urban_areas[`uza_id` %in% psrc_uza,sum(UPT)])
+ntd_hours_base <- as.integer(urban_areas[`uza_id` %in% psrc_uza,sum(VRH)])
+
 # First Pull Out Base Year Data 
 w_fname <- paste0(getwd(),"/inputs/",soundcast,".xlsx")
-sc_outputs <- read_excel(w_fname,sheet = "base_year")
+sc_outputs <- read_excel(w_fname,sheet = "DSEIS-Base-2014")
 setDT(sc_outputs)
   
-annual_boardings <- ntd_boardings_2014
+annual_boardings <- ntd_boardings_base
 base_model_boardings <- as.integer(sc_outputs[`Data Item` %in% "Daily Transit Boardings" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)])
 base_model_vmt <- (as.integer(sc_outputs[`Data Item` %in% "Daily VMT" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)]))
 
@@ -529,11 +573,11 @@ setDT(sc_outputs)
   
 daily_model_boardings <- as.integer(sc_outputs[`Data Item` %in% "Daily Transit Boardings" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)])
 delta_boardings <- (daily_model_boardings - base_model_boardings) * annualization
-annual_boardings <-  ntd_boardings_2014 + delta_boardings
+annual_boardings <-  ntd_boardings_base + delta_boardings
 
 daily_model_vmt <- (as.integer(sc_outputs[`Data Item` %in% "Daily VMT" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)]))
 delta_daily_vmt <- (daily_model_vmt - base_model_vmt)
-daily_vmt <- hpms_vmt_2014 + delta_daily_vmt
+daily_vmt <- hpms_vmt_base + delta_daily_vmt
   
 daily_walk_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "Walk",sum(Value)])
 daily_bike_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & Geography %in% "Regional" & Grouping %in% "Bike",sum(Value)])
@@ -544,6 +588,8 @@ daily_hov3_trips <- as.integer(sc_outputs[`Data Item` %in% "All Trip Totals" & G
 
 daily_non_vehicle_trips <- daily_transit_trips + daily_walk_trips + daily_bike_trips
 daily_non_sov_trips <- daily_non_vehicle_trips + daily_hov2_trips + daily_hov3_trips
+
+daily_co2 <- as.integer(sc_outputs[`Data Item` %in% "Daily CO2 Equivalent Emissions" & Geography %in% "Regional" & Grouping %in% "Total",sum(Value)])
   
 daily_vmt_capita <- daily_vmt / horizon_pop
 annual_vmt_capita <- (daily_vmt*annualization) / horizon_pop
@@ -911,7 +957,7 @@ for (i in seq(1:5)) {
 # Land Use Summary {.tabset .tabset.fade .tabset-pills}
 The charts and tables below summarize various UrbanSim outputs by various summary geographies
 
-## County {.tabset .tabset.fade .tabset-pills}
+## County
 Of the four counties in the region, King county is forecasted to ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -991,7 +1037,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Large Area {.tabset .tabset.fade .tabset-pills}
+## Large Area
 ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -1071,7 +1117,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## TOD Area {.tabset .tabset.fade .tabset-pills}
+## TOD Area
 ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -1151,7 +1197,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## RGC TOD Area {.tabset .tabset.fade .tabset-pills}
+## RGC TOD Area
 ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -1231,7 +1277,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## HCT {.tabset .tabset.fade .tabset-pills}
+## HCT
 ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -1310,7 +1356,7 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-## Regional Geography {.tabset .tabset.fade .tabset-pills}
+## Regional Geography
 ...
 
 ### Growth {.tabset .tabset.fade .tabset-pills}
@@ -1390,7 +1436,199 @@ for (i in my_list) {
 
 `r paste(out, collapse="\n")`
 
-# Growth for Other Metro Areas {.tabset .tabset.fade .tabset-pills}
+# Transportation System Metrics {.tabset .tabset.fade .tabset-pills}
+
+## Air Quality {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r aq, include=FALSE}
+out <- NULL
+
+# Travel Model Outputs for Base and Future Year 
+base_sc <- setDT(read_excel(paste0(getwd(),"/inputs/",soundcast,".xlsx"),sheet = "DSEIS-Base-2014"))
+scen_sc <- setDT(read_excel(paste0(getwd(),"/inputs/",soundcast,".xlsx"),sheet = wrk_scenario))
+
+travel_measures <- list(list("CO2","Daily CO2 Equivalent Emissions"),list("CO","Daily CO Emissions"), list("NOx","Daily NOx Emissions"), list("VOC","Daily VOCs Emissions"), list("PM10","Daily PM 10 Emissions"), list("PM25","Daily PM 2.5 Emissions"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c(measures[[2]])
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- measures[[2]]
+  w_geo <- "Regional"
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## VMT {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r vmt, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Daily Vehicle Miles Traveled')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- 'Daily VMT'
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## VHT {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r vht, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Daily Vehicle Hours Traveled')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- 'Daily VHT'
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Vehicle Delay {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r vhd, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Daily Vehicle Hours of Delay')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- 'Daily Delay'
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Medium Truck Delay {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r mt_delay, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Daily Medium Truck Hours of Delay')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- 'Daily Medium Truck Delay'
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Heavy Truck Delay {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r ht_delay, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Daily Heavy Truck Hours of Delay')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- 'Daily Heavy Truck Delay'
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Transit Performance Metrics {.tabset .tabset.fade .tabset-pills}
+
+## Boardings by Operator {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r boardings-by-op, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("CT","Community Transit"),list("ET","Everett Transit"), list("KCM","King County Metro"), list("KT","Kitsap Transit"), list("PT","Pierce Transit"),list("ST","Sound Transit"),list("WSF","Washington Ferries"),list("Region","Regional"))
+
+
+for (measures in travel_measures) {
+  summary_attributes <- c(measures[[2]])
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- "Daily Transit Boardings"
+  w_geo <- measures[[2]]
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Commute Mode Share for Transit {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r comm-trn, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c(measures[[2]])
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- "Commute Trip Mode Share"
+  w_geo <- measures[[2]]
+  w_grp <- "Transit"
+  output_type <- "percentage"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+## Non-Commute Mode Share for Transit {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r non-comm-trn, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c(measures[[2]])
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- "Non-Commute Trip Mode Share"
+  w_geo <- measures[[2]]
+  w_grp <- "Transit"
+  output_type <- "percentage"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+
+```
+
+`r paste(out, collapse="\n")`
+
+# Comparison to Other Metro Areas {.tabset .tabset.fade .tabset-pills}
 MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
 
 ## Population
