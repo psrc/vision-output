@@ -21,6 +21,9 @@ travel_model_base_year <- 2014
 network_buffer <- "yes"
 regional_geography_used <- "proposed"
 
+create_geo_map <- FALSE
+plot_geo_map <- FALSE
+
 # Service Hours from Soundcast
 hours_2050 <- 12735000
 
@@ -39,6 +42,10 @@ transit_variables <- c("UPT","VRH")
 psrc_uza <- c(14,180)
 
 sister_msa <- c(14460,41860,12060,33100,37980,47900,26420,19100)
+
+# Soundcast Outlocations
+soundcast_folder <- "L:/vision2050/soundcast/wild_bill/2050/outputs/network"
+output_folder <- "C:/coding/vision-output/outputs"
 
 ```
 
@@ -63,6 +70,7 @@ library(lubridate)
 library(rgeos)
 library(tidyverse)
 library(zoo)
+library(reticulate)
 
 us_nm <- Sys.getenv("USERNAME")
 
@@ -503,12 +511,11 @@ w_fname <- paste0(getwd(),'/inputs/parcel_lokups.csv')
 fwrite(parcels, w_fname)
 ```
 
-```{r create_lookup_shapefiles, include = FALSE}
-library(reticulate)
+```{r create_lookup_shapefiles, include = FALSE, eval = create_geo_map}
 
 # Run python code that processes data for import to elmer
-#source_python("geography-to-parcels.py")
-#create_geography_files()
+source_python("geography-to-parcels.py")
+create_geography_files()
 
 ```
 
@@ -996,13 +1003,13 @@ for (i in my_list) {
 `r paste(out, collapse="\n")`
 
 #### Map
-```{r county-area-map-setup, include=FALSE}
+```{r county-area-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["King"]],'county_id_king',"King"),list(psrc_colors[["Kitsap"]],'county_id_kitsap',"Kitsap"),list(psrc_colors[["Pierce"]],'county_id_pierce',"Pierce"),list(psrc_colors[["Snohomish"]],'county_id_snohomish',"Snohomish"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1076,13 +1083,13 @@ for (i in my_list) {
 
 #### Map
 
-```{r la-area-map-setup, include=FALSE}
+```{r la-area-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["NW Snohomish"]],'large_area_id_nw_snohomish',"NW Snohomish"),list(psrc_colors[["Everett"]],'large_area_id_everett',"Everett"),list(psrc_colors[["SW Snohomish"]],'large_area_id_sw_snohomish',"SW Snohomish"),list(psrc_colors[["Snohomish Other"]],'large_area_id_snohomish_other',"Snohomish Other"), list(psrc_colors[["Shoreline"]],'large_area_id_shoreline',"Shoreline"),list(psrc_colors[["Seattle"]],'large_area_id_seattle',"Seattle"),list(psrc_colors[["Eastside King"]],'large_area_id_eastside_king',"Eastside King"),list(psrc_colors[["SW King"]],'large_area_id_sw_king',"SW King"),list(psrc_colors[["Green River"]],'large_area_id_green_river',"Green River"), list(psrc_colors[["SE King"]],'large_area_id_se_king',"SE King"),list(psrc_colors[["King Other"]],'large_area_id_king_other',"King Other"),list(psrc_colors[["Tacoma"]],'large_area_id_tacoma',"Tacoma"),list(psrc_colors[["SW Pierce"]],'large_area_id_sw_pierce',"SW Pierce"),list(psrc_colors[["Pierce Other"]],'large_area_id_pierce_other',"Pierce Other"), list(psrc_colors[["Peninsula"]],'large_area_id_peninsula',"Peninsula"),list(psrc_colors[["South Kitsap"]],'large_area_id_south_kitsap',"South Kitsap"),list(psrc_colors[["Central Kitsap"]],'large_area_id_central_kitsap',"Central Kitsap"),list(psrc_colors[["North Kitsap"]],'large_area_id_north_kitsap',"North Kitsap"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1156,13 +1163,13 @@ for (i in my_list) {
 
 #### Map
 
-```{r ta-map-setup, include=FALSE}
+```{r ta-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["Light Rail"]],'tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'tod_id_ferry',"Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1236,13 +1243,13 @@ for (i in my_list) {
 
 #### Map
 
-```{r rgc-ta-map-setup, include=FALSE}
+```{r rgc-ta-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["Light Rail"]],'rgc_tod_id_lrt',"Light Rail"),list(psrc_colors[["Commuter Rail"]],'rgc_tod_id_crt',"Commuter Rail"),list(psrc_colors[["Ferry"]],'rgc_tod_id_ferry',"Ferry"),list(psrc_colors[["Bus Rapid Transit"]],'rgc_tod_id_brt',"Bus Rapid Transit"), list(psrc_colors[["Regional Growth Centers"]],'rgc_tod_id_rgc',"Regional Growth Centers"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1315,13 +1322,13 @@ for (i in my_list) {
 
 #### Map
 
-```{r hct-area-map-setup, include=FALSE}
+```{r hct-area-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["High Capacity Transit"]],'hct_id_hct',"High Capacity Transit"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1395,13 +1402,13 @@ for (i in my_list) {
 
 #### Map
 
-```{r regeo-area-map-setup, include=FALSE}
+```{r regeo-area-map-setup, include=FALSE, eval = plot_geo_map}
 area_directory <- 'c:/coding/vision-output/inputs/shapefiles/areas'
 areas_to_map <- list(list(psrc_colors[["Metro"]],'rgeo_id_metro',"Metro Cities"),list(psrc_colors[["Core"]],'rgeo_id_core',"Core Cities"),list(psrc_colors[["HCT"]],'rgeo_id_hct',"High Capacity Transit Cities"),list(psrc_colors[["Cities & Towns"]],'rgeo_id_cities',"Cities & Towns"), list(psrc_colors[["Urban Unincorporated"]],'rgeo_id_uu',"Urban Unincorporated"))
 working_map <- create_area_map(areas_to_map,area_directory)
 ```
 
-```{r, echo=FALSE, results="asis"}
+```{r, echo=FALSE, results="asis", eval = plot_geo_map}
 working_map
 ```
 
@@ -1546,6 +1553,107 @@ for (measures in travel_measures) {
 ```
 
 `r paste(out, collapse="\n")`
+
+# Roadway Congestion {.tabset .tabset.fade .tabset-pills}
+Roadway congestion is defined by comparing the operating speed on a roadway facility for a specific time period to the posted speed limit. Moderate congestion levels are defined as places where the ratio of the oeprating speed to the posted speed is 50%-70%. Heavy Congestion is defined as locations where the ratio of the operating speed to the posted speed is 25%-50% and Severe congestion is defined as anything less than 25% of the posted speed limit.  
+
+```{r create_congestion_maps, include = FALSE}
+fwy_links <- c(1,3)
+art_links <- c(5,7)
+source_python("soundcast-network.py")
+
+# AM Peak Hour
+create_network_shapefiles(soundcast_folder,output_folder,'7to8')
+am_freeway <- create_congestion_map('7to8',c(1,3))
+am_arterials <- create_congestion_map('7to8',c(5,7))
+
+# Calculate AM Summary Metrics
+tod <- '7to8'
+
+model.shape <- readOGR(dsn='c:/coding/vision-output/outputs',layer=paste0('network_shape_',tod))
+network_data <- setDT(model.shape@data)
+network_data$lane_miles <- network_data$lanes * network_data$len
+
+# Lane Miles at Different Levels of Congestion
+am_fwy_tot_lm <- as.integer(network_data[vdf %in% fwy_links,sum(lane_miles)])
+am_art_tot_lm <- as.integer(network_data[vdf %in% art_links,sum(lane_miles)])
+am_fwy_mod_lm <- as.integer(network_data[vdf %in% fwy_links & spr >= 0.5 & spr < 0.7,sum(lane_miles)])
+am_art_mod_lm <- as.integer(network_data[vdf %in% art_links & spr >= 0.5 & spr < 0.7,sum(lane_miles)])
+am_fwy_hvy_lm <- as.integer(network_data[vdf %in% fwy_links & spr >= 0.25 & spr < 0.5,sum(lane_miles)])
+am_art_hvy_lm <- as.integer(network_data[vdf %in% art_links & spr >= 0.25 & spr < 0.5,sum(lane_miles)])
+am_fwy_sev_lm <- as.integer(network_data[vdf %in% fwy_links & spr < 0.25,sum(lane_miles)])
+am_art_sev_lm <- as.integer(network_data[vdf %in% art_links & spr < 0.25,sum(lane_miles)])
+
+am_fwy_mod_shr <- am_fwy_mod_lm / am_fwy_tot_lm
+am_fwy_hvy_shr <- am_fwy_hvy_lm / am_fwy_tot_lm
+am_fwy_sev_shr <- am_fwy_sev_lm / am_fwy_tot_lm
+am_fwy_cong <- am_fwy_mod_shr + am_fwy_hvy_shr + am_fwy_sev_shr
+
+am_art_mod_shr <- am_art_mod_lm / am_fwy_tot_lm
+am_art_hvy_shr <- am_art_hvy_lm / am_fwy_tot_lm
+am_art_sev_shr <- am_art_sev_lm / am_fwy_tot_lm
+am_art_cong <- am_art_mod_shr + am_art_hvy_shr + am_art_sev_shr
+
+#PM Peak HOur
+create_network_shapefiles(soundcast_folder,output_folder,'17to18')
+pm_freeway <- create_congestion_map('17to18',c(1,3))
+pm_arterials <- create_congestion_map('17to18',c(5,7))
+
+# Calculate PM Summary Metrics
+tod <- '17to18'
+
+model.shape <- readOGR(dsn='c:/coding/vision-output/outputs',layer=paste0('network_shape_',tod))
+network_data <- setDT(model.shape@data)
+network_data$lane_miles <- network_data$lanes * network_data$len
+
+# Lane Miles at Different Levels of Congestion
+pm_fwy_tot_lm <- as.integer(network_data[vdf %in% fwy_links,sum(lane_miles)])
+pm_art_tot_lm <- as.integer(network_data[vdf %in% art_links,sum(lane_miles)])
+pm_fwy_mod_lm <- as.integer(network_data[vdf %in% fwy_links & spr >= 0.5 & spr < 0.7,sum(lane_miles)])
+pm_art_mod_lm <- as.integer(network_data[vdf %in% art_links & spr >= 0.5 & spr < 0.7,sum(lane_miles)])
+pm_fwy_hvy_lm <- as.integer(network_data[vdf %in% fwy_links & spr >= 0.25 & spr < 0.5,sum(lane_miles)])
+pm_art_hvy_lm <- as.integer(network_data[vdf %in% art_links & spr >= 0.25 & spr < 0.5,sum(lane_miles)])
+pm_fwy_sev_lm <- as.integer(network_data[vdf %in% fwy_links & spr < 0.25,sum(lane_miles)])
+pm_art_sev_lm <- as.integer(network_data[vdf %in% art_links & spr < 0.25,sum(lane_miles)])
+
+pm_fwy_mod_shr <- pm_fwy_mod_lm / pm_fwy_tot_lm
+pm_fwy_hvy_shr <- pm_fwy_hvy_lm / pm_fwy_tot_lm
+pm_fwy_sev_shr <- pm_fwy_sev_lm / pm_fwy_tot_lm
+pm_fwy_cong <- pm_fwy_mod_shr + pm_fwy_hvy_shr + pm_fwy_sev_shr
+
+pm_art_mod_shr <- pm_art_mod_lm / pm_fwy_tot_lm
+pm_art_hvy_shr <- pm_art_hvy_lm / pm_fwy_tot_lm
+pm_art_sev_shr <- pm_art_sev_lm / pm_fwy_tot_lm
+pm_art_cong <- pm_art_mod_shr + pm_art_hvy_shr + pm_art_sev_shr
+```
+
+## AM Freeway
+By the year `r toString(analysis_years[[2]])`, `r toString(format(round((am_fwy_sev_shr)*100,0), nsmall=0))`% of the region's freeway lane-miles will be severly congestion (traveling less than 25% of the posted speed limit). In addition, more than `r toString(format(round((am_fwy_hvy_shr)*100,0), nsmall=0))`% of freeway lane miles will be heavily congested (speeds between 25%-50% of speed limit) and another `r toString(format(round((am_fwy_mod_shr)*100,0), nsmall=0))`% lane miles in moderate congestion (50% to 70% of posted speed). In all, over `r toString(format(round((am_fwy_cong)*100,0), nsmall=0))`% of all freeway lane miles in the region will experience some level of congestion.
+
+```{r plot_am_fwy, echo = FALSE}
+am_freeway
+```
+
+## AM Arterials
+By the year `r toString(analysis_years[[2]])`, `r toString(format(round((am_art_sev_shr)*100,0), nsmall=0))`% of the region's arterial lane-miles will be severly congestion (traveling less than 25% of the posted speed limit). In addition, more than `r toString(format(round((am_art_hvy_shr)*100,0), nsmall=0))`% of arterial lane miles will be heavily congested (speeds between 25%-50% of speed limit) and another `r toString(format(round((am_art_mod_shr)*100,0), nsmall=0))`% lane miles in moderate congestion (50% to 70% of posted speed). In all, over `r toString(format(round((am_art_cong)*100,0), nsmall=0))`% of all arterial lane miles in the region will experience some level of congestion.
+
+```{r plot_am_art, echo = FALSE}
+am_arterials
+```
+
+## PM Freeway
+By the year `r toString(analysis_years[[2]])`, `r toString(format(round((pm_fwy_sev_shr)*100,0), nsmall=0))`% of the region's freeway lane-miles will be severly congestion (traveling less than 25% of the posted speed limit). In addition, more than `r toString(format(round((pm_fwy_hvy_shr)*100,0), nsmall=0))`% of freeway lane miles will be heavily congested (speeds between 25%-50% of speed limit) and another `r toString(format(round((pm_fwy_mod_shr)*100,0), nsmall=0))`% lane miles in moderate congestion (50% to 70% of posted speed). In all, over `r toString(format(round((pm_fwy_cong)*100,0), nsmall=0))`% of all freeway lane miles in the region will experience some level of congestion.
+
+```{r plot_pm_fwy, echo = FALSE}
+pm_freeway
+```
+
+## PM Arterials
+By the year `r toString(analysis_years[[2]])`, `r toString(format(round((pm_art_sev_shr)*100,0), nsmall=0))`% of the region's arterial lane-miles will be severly congestion (traveling less than 25% of the posted speed limit). In addition, more than `r toString(format(round((pm_art_hvy_shr)*100,0), nsmall=0))`% of arterial lane miles will be heavily congested (speeds between 25%-50% of speed limit) and another `r toString(format(round((pm_art_mod_shr)*100,0), nsmall=0))`% lane miles in moderate congestion (50% to 70% of posted speed). In all, over `r toString(format(round((pm_art_cong)*100,0), nsmall=0))`% of all arterial lane miles in the region will experience some level of congestion.
+
+```{r plot_pm_art, echo = FALSE}
+pm_arterials
+```
 
 # Comparison to Other Metro Areas {.tabset .tabset.fade .tabset-pills}
 MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.

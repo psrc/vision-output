@@ -225,3 +225,60 @@ table_from_db <- function(srv_nm,db_nm,tbl_nm) {
   odbc::dbDisconnect(db_con)
   return(w_tbl)
 }
+
+create_congestion_map <- function(tod, link_types) {
+  
+  # Create a Map of Congestion Hotspots
+  model.shape <- readOGR(dsn='c:/coding/vision-output/outputs',layer=paste0('network_shape_',tod))
+  moderate <- model.shape[which(model.shape$vdf %in% link_types & model.shape$spr >= 0.5 & model.shape$spr < 0.7),]
+  heavy <- model.shape[which(model.shape$vdf %in% link_types & model.shape$spr >= 0.25 & model.shape$spr < 0.5),]
+  severe <- model.shape[which(model.shape$vdf %in% link_types & model.shape$spr < 0.25),]
+  
+  # Create Labels
+  moderate_labels <- paste0("<b> <br>","Speed Ratio: ", "</b>", prettyNum(round((moderate$spr)*100, 0), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+  
+  heavy_labels <- paste0("<b> <br>","Speed Ratio: ", "</b>", prettyNum(round((heavy$spr)*100, 0), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+  
+  severe_labels <- paste0("<b> <br>","Speed Ratio: ", "</b>", prettyNum(round((severe$spr)*100, 0), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+  
+  working_map <- leaflet() %>%
+    addProviderTiles(providers$CartoDB.Positron) %>%
+    addLayersControl(baseGroups = c("Base Map"),
+                     overlayGroups = c("Moderate Congestion","Heavy Congestion","Severe Congestion"),
+                     options = layersControlOptions(collapsed = FALSE)) %>%
+    addEasyButton(easyButton(
+      icon="fa-anchor", title="Bremerton",
+      onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-amazon", title="Cross-Lake",
+      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-plane", title="Everett",
+      onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-glass", title="Tacoma",
+      onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+    addEasyButton(easyButton(
+      icon="fa-globe", title="Region",
+      onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }"))) %>%
+    addPolylines(data = moderate,
+                 color = "orange",
+                 weight = 4,
+                 label = moderate_labels,
+                 fillColor = "orange",
+                 group = "Moderate Congestion") %>%
+    addPolylines(data = heavy,
+                 color = "red", 
+                 weight = 4,
+                 label = heavy_labels,
+                 fillColor = "red",
+                 group = "Heavy Congestion") %>%
+    addPolylines(data = severe,
+                 color = "black", 
+                 weight = 4,
+                 label = severe_labels,
+                 fillColor = "black",
+                 group = "Severe Congestion")
+  
+  return(working_map)
+}
