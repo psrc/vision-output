@@ -38,7 +38,14 @@ if (output_type == "integer") {
       formatCurrency(working_column, "", digits = 0) %>%
       formatStyle(working_column,`text-align` = 'center')
   }
-  
+
+} else if ((output_type == "decimal")) {
+  for (working_column in numeric_columns) {
+    clean_tbl <- clean_tbl %>% 
+      formatCurrency(working_column, "", digits = 1) %>%
+      formatStyle(working_column,`text-align` = 'center')
+  }  
+    
 } else {
   for (working_column in numeric_columns) {
     clean_tbl <- clean_tbl %>% 

@@ -1655,6 +1655,69 @@ By the year `r toString(analysis_years[[2]])`, `r toString(format(round((pm_art_
 pm_arterials
 ```
 
+# Trip Distance
+xx
+
+## County {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r county_trip_length_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Average Trip Distance (miles)')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Length','Other Trip Length')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Regional Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r rgeo_trip_length_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("Metro","Metropolitan Cities"),list("Core","Core Cities"), list("HCT","HCT Communities"), list("Cities and Towns","Cities and Towns"), list("UU","Urban Unincorporated"), list("Rural","Rural"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Average Trip Distance (miles)')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Length','Other Trip Length')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Equity Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r eq_trip_length_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("< 50% people of color","50% People of Color and Under"),list("> 50% people of color","Over 50% People of Color"), list("< 50% low income","50% Low Income and Under"), list("> 50% low income","Over 50% Low Income"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Average Trip Distance (miles)')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Length','Other Trip Length')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
 # Comparison to Other Metro Areas {.tabset .tabset.fade .tabset-pills}
 MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
 
