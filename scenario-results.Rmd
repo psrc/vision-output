@@ -134,14 +134,21 @@ psrc_colors <- c(
     "Central Kitsap" = "#8CC63E",
     "North Kitsap" = "#00A7A0")
 
-# Colors for Bar Charts in MSA Comparison plots
+# Colors for Bar Charts
 bar_colors <- c(
     "0" = "#BBBDC0",
     "1" = "#F05A28",
     "2" = "#8CC63E",
     "3" = "#00A7A0",
     "Today" = "#BBBDC0",
-    "2050" = "#F05A28")
+    "2050" = "#F05A28",
+    "SOV" = "#91268F",
+    "HOV2" = "#F05A28",
+    "HOV3+" = "#8CC63E",
+    "Transit" = "#00A7A0",
+    "School Bus" = "#00A7A0",
+    "Walk" = "#76787A",
+    "Bike" = "#BBBDC0")
 
 # Parcel Capacity File
 cap_file <- "parcel_level_capacity"
@@ -1594,7 +1601,7 @@ am_art_hvy_shr <- am_art_hvy_lm / am_fwy_tot_lm
 am_art_sev_shr <- am_art_sev_lm / am_fwy_tot_lm
 am_art_cong <- am_art_mod_shr + am_art_hvy_shr + am_art_sev_shr
 
-#PM Peak HOur
+#PM Peak Hour
 create_network_shapefiles(soundcast_folder,output_folder,'17to18')
 pm_freeway <- create_congestion_map('17to18',c(1,3))
 pm_arterials <- create_congestion_map('17to18',c(5,7))
@@ -1713,6 +1720,69 @@ for (measures in travel_measures) {
   w_grp <- "Total"
   output_type <- "decimal"
   out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Mode Shares
+xx
+
+## County {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r county_mode_summaries, include=FALSE}
+out <- NULL
+
+summary_tabs <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (tabs in summary_tabs) {
+  summary_attributes <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  w_geo <- list(tabs[[2]])
+  w_grp <- list("SOV","HOV2","HOV3+","Transit","School Bus","Walk","Bike")
+  output_type <- "percentage"
+  out <- c(out, knitr::knit_child("mode-share-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Regional Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r rgeo_mode_summaries, include=FALSE}
+out <- NULL
+
+summary_tabs <- list(list("Metro","Metropolitan Cities"),list("Core","Core Cities"), list("HCT","HCT Communities"), list("Cities and Towns","Cities and Towns"), list("UU","Urban Unincorporated"), list("Rural","Rural"), list("Region","Regional"))
+
+for (tabs in summary_tabs) {
+  summary_attributes <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  w_geo <- list(tabs[[2]])
+  w_grp <- list("SOV","HOV2","HOV3+","Transit","School Bus","Walk","Bike")
+  output_type <- "percentage"
+  out <- c(out, knitr::knit_child("mode-share-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Equity Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r equity_mode_summaries, include=FALSE}
+out <- NULL
+
+summary_tabs <- list(list("< 50% people of color","50% People of Color and Under"),list("> 50% people of color","Over 50% People of Color"), list("< 50% low income","50% Low Income and Under"), list("> 50% low income","Over 50% Low Income"), list("Region","Regional"))
+
+for (tabs in summary_tabs) {
+  summary_attributes <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Commute Trip Mode Share','Non-Commute Trip Mode Share','All Trip Mode Share')
+  w_geo <- list(tabs[[2]])
+  w_grp <- list("SOV","HOV2","HOV3+","Transit","School Bus","Walk","Bike")
+  output_type <- "percentage"
+  out <- c(out, knitr::knit_child("mode-share-child.Rmd"))
 }
 ```
 

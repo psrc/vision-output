@@ -1,0 +1,86 @@
+---
+title: "mode-share-child"
+output: html_document
+---
+```{r, include=FALSE}
+sum_tbl <- NULL
+
+for (atts in w_att) {
+  wrk_tbl <- NULL
+  interim <- NULL
+  
+  for (grps in w_grp) {
+
+    base_val <- as.numeric(base_sc[`Data Item` %in% atts & Geography %in% w_geo & Grouping %in% grps,sum(Value)])
+    scen_val <- as.numeric(scen_sc[`Data Item` %in% atts & Geography %in% w_geo & Grouping %in% grps,sum(Value)])
+
+    dlta_val <- scen_val - base_val
+    perc_val <- dlta_val / base_val
+    
+    meas_title <- grps
+  
+    interim <- data.table(`Measure`=meas_title,`Today`=base_val,`2050`=scen_val,`Delta`=dlta_val,`% Change`=perc_val)
+    if (is.null(wrk_tbl)) {wrk_tbl <- interim} else {wrk_tbl <- rbind(wrk_tbl,interim)}
+  }
+  if (is.null(sum_tbl)) {sum_tbl <- wrk_tbl} else {sum_tbl <- merge(sum_tbl,wrk_tbl,by="Measure")}
+}
+
+num_data_cols <- length(summary_attributes) * length(summary_columns)
+working_column <- colnames(sum_tbl)
+sum_tbl$Measure <- factor(sum_tbl$Measure, levels = w_grp)
+sum_tbl <- sum_tbl[order(Measure),]
+
+measure_table_container <- create_table_container('Measure', summary_attributes, summary_columns)
+clean_tbl <- datatable(sum_tbl, container = measure_table_container, rownames = FALSE, options = list(pageLength = 10, columnDefs = list(list(className = 'dt-center', targets =1:num_data_cols))))
+
+clean_tbl <- clean_tbl %>% 
+  formatPercentage(working_column,0) %>%
+  formatStyle(working_column,`text-align` = 'center')
+
+# Create Bar Chart
+upd_cols <- c("Measure","Today_Comm","2050_Comm","Delta_Comm","%_Comm","Today_Non","2050_Non","Delta_Non","%_Non","Today_All","2050_All","Delta_All","%_All")
+setnames(sum_tbl,upd_cols)
+
+bar_tbl <- sum_tbl[,c("Measure","Today_Comm","2050_Comm","Today_Non","2050_Non","Today_All","2050_All")]
+var_levels <- c("Today","2050")
+plot_tbl <- melt(bar_tbl, id.vars=c('Measure'))
+
+plot_tbl$year <- as.character(plot_tbl$variable)
+plot_tbl$year <- str_replace_all(plot_tbl$year, "_Comm", "")
+plot_tbl$year <- str_replace_all(plot_tbl$year, "_Non", "")
+plot_tbl$year <- str_replace_all(plot_tbl$year, "_All", "")
+
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "Today_Comm", "Commute Trip Mode Share")
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "2050_Comm", "Commute Trip Mode Share")
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "Today_Non", "Non-Commute Trip Mode Share")
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "2050_Non", "Non-Commute Trip Mode Share")
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "Today_All", "All Trip Mode Share")
+plot_tbl$variable <- str_replace_all(plot_tbl$variable, "2050_All", "All Trip Mode Share")
+
+plot_tbl$year<- factor(plot_tbl$year, levels = var_levels)
+plot_tbl <- plot_tbl[order(year),]
+
+plot_tbl$variable<- factor(plot_tbl$variable, levels = unlist(summary_attributes))
+plot_tbl <- plot_tbl[order(variable),]
+
+wrk_chart <- ggplot(plot_tbl, aes(fill=reorder(Measure, value), y=value, x=year))+
+  geom_bar(stat="identity") +
+  facet_wrap(~variable) +
+  theme_light()+
+  scale_fill_manual(values=bar_colors)+
+  scale_y_continuous(labels = scales::percent)+
+  theme(legend.position="bottom", legend.title = 
+    element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank())
+
+wrk_chart <- ggplotly(wrk_chart) %>% 
+  layout(legend = list(orientation = "h", xanchor = "center", x = 0.60, y = -0.1))
+
+```
+
+### `r tabs[[1]]`
+
+```{r, echo=FALSE, results="asis", fig.width=10, fig.height=4}
+clean_tbl
+
+wrk_chart
+```
