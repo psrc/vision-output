@@ -1788,6 +1788,111 @@ for (tabs in summary_tabs) {
 
 `r paste(out, collapse="\n")`
 
+# Per Capita Measures
+xxx
+
+## County {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r per_cap_cnty_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Vehicle Metrics by Year')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Average VMT per Resident','Average VHT per Resident', 'Average Auto Delay per Resident')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Regional Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r per_cap_rgeo_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("Metro","Metropolitan Cities"),list("Core","Core Cities"), list("HCT","HCT Communities"), list("Cities and Towns","Cities and Towns"), list("UU","Urban Unincorporated"), list("Rural","Rural"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Vehicle Metrics by Year')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Average VMT per Resident','Average VHT per Resident', 'Average Auto Delay per Resident')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Equity Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r per_cap_eq_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("< 50% people of color","50% People of Color and Under"),list("> 50% people of color","Over 50% People of Color"), list("< 50% low income","50% Low Income and Under"), list("> 50% low income","Over 50% Low Income"), list("Region","Regional"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Vehicle Metrics by Year')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Average VMT per Resident','Average VHT per Resident', 'Average Auto Delay per Resident')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "decimal"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+# Jobs Accessibility
+xxx
+
+## County {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r job_acc_cnty_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Region"))
+
+for (measures in travel_measures) {
+  summary_attributes <- c('Metrics by Year')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Jobs within 1-mile Walk Trip','Jobs within 3-mile Bike Trip', 'Jobs within 45-min Transit Trip')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
+## Equity Geography {.tabset .tabset.fade .tabset-pills}
+xxx
+```{r job_acc_eq_summaries, include=FALSE}
+out <- NULL
+
+travel_measures <- list(list("< 50% people of color","Under 50% People of Color"),list("> 50% people of color"," Over 50% People of Color"), list("< 50% low income","Under 50% People with Low Income"), list("> 50% low income"," Over 50% People with Low Income"), list("Region","Region"))
+for (measures in travel_measures) {
+  summary_attributes <- c('Metrics by Year')
+  summary_columns <- c("Today","2050","Delta","% Change")
+  w_att <- list('Jobs within 1-mile Walk Trip','Jobs within 3-mile Bike Trip', 'Jobs within 45-min Transit Trip')
+  w_geo <- list(measures[[2]])
+  w_grp <- "Total"
+  output_type <- "integer"
+  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
+}
+```
+
+`r paste(out, collapse="\n")`
+
 # Comparison to Other Metro Areas {.tabset .tabset.fade .tabset-pills}
 MSA's are areas consisting of a core county or counties in which lies an urban area having a population of at least 50,000, plus adjacent counties having a high degree of social and economic integration with the core counties as measured through commuting ties.
 

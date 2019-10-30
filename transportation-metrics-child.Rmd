@@ -68,9 +68,16 @@ plot_tbl <- melt(bar_tbl, id.vars=c('Measure'), variable.name='Year', value.name
 wrk_chart <- ggplot(plot_tbl, aes(fill=Year, y=value, x=Year), text=labels) + geom_bar(stat="identity") +
   theme_light()+
   scale_fill_manual(values=bar_colors)+
-  scale_y_continuous(labels = comma)+
   theme(legend.position="bottom", legend.title = 
     element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank())
+
+if (output_type == "integer") {
+  wrk_chart <- wrk_chart + scale_y_continuous(labels = scales::comma)
+} else if (output_type == "decimal") {
+  wrk_chart <- wrk_chart + scale_y_continuous(labels = scales::number_format(accuracy = 0.1))
+} else {
+  wrk_chart <- wrk_chart + scale_y_continuous(labels = scales::percent)
+}
 
 wrk_chart <- wrk_chart + facet_wrap(~Measure, scales = "free")
 wrk_chart <- ggplotly(wrk_chart) %>% 
@@ -78,7 +85,7 @@ wrk_chart <- ggplotly(wrk_chart) %>%
 
 # Figure out how many charts we have to figure out size
 if (length(w_geo)>1) {num_measures <- length(w_geo)} else {num_measures <- length(w_att)}
-if (num_measures == 1) {fwid <- 3} else if(num_measures == 2) {fwid <- 6} else {fwid <- 10}
+if (num_measures == 1) {fwid <- 3} else if(num_measures == 2) {fwid <- 7} else {fwid <- 10}
 if (length(w_geo)>1) {fhght <- 4 * ceiling((length(w_geo)/3))} else {fhght <- 4 * ceiling((length(w_att)/3))}
 
 ```
