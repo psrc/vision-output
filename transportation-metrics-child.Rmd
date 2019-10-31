@@ -65,6 +65,15 @@ bar_tbl <- wrk_tbl[,c("Measure","Today","2050")]
 var_levels <- c("Today","2050")
 plot_tbl <- melt(bar_tbl, id.vars=c('Measure'), variable.name='Year', value.name = 'value')
 
+plot_tbl$year<- factor(plot_tbl$Year, levels = var_levels)
+plot_tbl <- plot_tbl[order(Year),]
+
+
+if (length(w_geo)>1) {att_levels <- unlist(w_geo)} else {att_levels <- unlist(w_att)}
+
+plot_tbl$Measure<- factor(plot_tbl$Measure, levels = att_levels)
+plot_tbl <- plot_tbl[order(Measure),]
+
 wrk_chart <- ggplot(plot_tbl, aes(fill=Year, y=value, x=Year), text=labels) + geom_bar(stat="identity") +
   theme_light()+
   scale_fill_manual(values=bar_colors)+

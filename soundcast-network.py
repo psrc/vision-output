@@ -45,9 +45,3 @@ def create_network_shapefiles(inputs_location, outputs_location, current_tod):
     df_lines.to_file(os.path.join(outputs_location,"network_shape_"+ current_tod +".shp"))
     working_projection = os.path.join(outputs_location,"network_shape_"+ current_tod +".prj")
     shutil.copyfile(wgs_proj, working_projection)
-
-# Currently Set to be Wild Bill
-#soundcast_folder = "L:/vision2050/soundcast/wild_bill/2050/outputs/network"
-#output_folder = "C:/coding/vision-output/outputs"
-#time_period = '7to8'
-#create_network_shapefiles(soundcast_folder,output_folder,time_period)
