@@ -22,7 +22,7 @@ network_buffer <- "yes"
 regional_geography_used <- "proposed"
 
 create_geo_map <- FALSE
-plot_geo_map <- FALSE
+plot_geo_map <- TRUE
 
 # Service Hours from Soundcast
 hours_2050 <- 12735000
@@ -44,7 +44,8 @@ psrc_uza <- c(14,180)
 sister_msa <- c(14460,41860,12060,33100,37980,47900,26420,19100)
 
 # Soundcast Outlocations
-soundcast_folder <- "L:/vision2050/soundcast/wild_bill/2050/outputs/network"
+roadway_folder <- "L:/vision2050/soundcast/wild_bill/2050/outputs/network"
+transit_folder <- "L:/vision2050/soundcast/wild_bill/2050/outputs/transit"
 output_folder <- "C:/coding/vision-output/outputs"
 
 ```
@@ -71,6 +72,7 @@ library(rgeos)
 library(tidyverse)
 library(zoo)
 library(reticulate)
+library(raster)
 
 us_nm <- Sys.getenv("USERNAME")
 
@@ -1540,26 +1542,108 @@ for (measures in travel_measures) {
 
 `r paste(out, collapse="\n")`
 
-## Transit Mode Share {.tabset .tabset.fade .tabset-pills}
-xxx
-```{r comm-trn, include=FALSE}
-out <- NULL
+## Map of Boardings
+xx  
 
-travel_measures <- list(list("King","King County"),list("Kitsap","Kitsap County"), list("Pierce","Pierce County"), list("Snohomish","Snohomish County"), list("Region","Regional"))
+```{r create_boarding_maps, include = FALSE}
 
-for (measures in travel_measures) {
-  summary_attributes <- c(measures[[2]])
-  summary_columns <- c("Today","2050","Delta","% Change")
-  w_att <- list("Commute Trip Mode Share","Non-Commute Trip Mode Share")
-  w_geo <- list(measures[[2]])
-  w_grp <- "Transit"
-  output_type <- "percentage"
-  out <- c(out, knitr::knit_child("transportation-metrics-child.Rmd"))
-}
+# Open Transit Results by Node
+w_fname <- paste0(transit_folder,"/transit_summary.xlsx")
+transit_outputs <- read_excel(w_fname,sheet = "Transit Stop Activity")
+setDT(transit_outputs)
+
+# Open Network File to get Lat and Lon for Nodes
+w_fname <- paste0(roadway_folder,"/network_shape.csv")
+node_outputs <- read.csv(w_fname)
+setDT(node_outputs) 
+node_outputs <- node_outputs[shape_local_index == 0]
+keep_cols <- c("i","lon","lat")
+node_outputs <- node_outputs[,..keep_cols]
+setkey(node_outputs, i)
+node_list <- node_outputs[, j=list(mean(lon, na.rm = TRUE),mean(lat, na.rm = TRUE)),by = i]
+setnames(node_list,c("i","lon","lat"))
+
+# Combine Node Ouput with lon,lat for spatial analysis
+keep_cols <- c("inode","total_boardings","transfers")
+transit_outputs <- transit_outputs[,..keep_cols]
+setnames(transit_outputs,c("i","boardings","transfers"))
+transit_outputs <- merge(transit_outputs,node_list,by="i")
+changeCols <- c("i","boardings","transfers")
+transit_outputs <- transit_outputs[,(changeCols):= lapply(.SD, as.integer), .SDcols = changeCols]
+
+# Join Nodes to TAZ's
+interim <- transit_outputs
+coordinates(interim) <- ~lon+lat
+crs(interim) <- CRS("+proj=longlat +datum=WGS84")
+taz.shape <- readOGR(dsn='c:/coding/vision-output/inputs/shapefiles',layer='taz2010_wgs1984')
+crs(taz.shape) <- CRS("+proj=longlat +datum=WGS84")
+taz_id <- over(interim,taz.shape[,'TAZ'])
+transit_outputs$TAZ <- taz_id$TAZ
+setkey(transit_outputs, TAZ)
+summary_boardings <- transit_outputs[, j=list(sum(boardings, na.rm = TRUE),sum(transfers, na.rm = TRUE)),by = TAZ]
+setnames(summary_boardings,c("TAZ","boardings","transfers"))
+
+# Merge Boardings by TAZ with the TAZ Shapefile
+boardings_to_map <- sp::merge(taz.shape, summary_boardings, by = "TAZ")
+boardings_to_map@data[is.na(boardings_to_map@data)] <- 0
+
+rng <- range(boardings_to_map$boardings)
+max_bin <- max(abs(rng))
+round_to <- 10^floor(log10(max_bin))
+max_bin <- ceiling(max_bin/round_to)*round_to
+breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+bins <- c(0, breaks)
+
+labels <- paste0("<b>","TAZ: ", "</b>",boardings_to_map$TAZ,
+                 "<b> <br>","Boardings: ", "</b>", prettyNum(round(boardings_to_map$boardings, 0), big.mark = ",")) %>% lapply(htmltools::HTML)
+
+pal <- colorBin("Blues", domain = boardings_to_map$boardings, bins = bins)
+
+working_map <- leaflet(data = boardings_to_map) %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(fillColor = pal(boardings_to_map$boardings),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight =5,
+                color = "76787A",
+                dashArray ="",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))%>%
+  addEasyButton(easyButton(
+    icon="fa-anchor", title="Bremerton",
+    onClick=JS("function(btn, map){  map.setView([47.565,-122.654],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-amazon", title="Cross-Lake",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-plane", title="Everett",
+    onClick=JS("function(btn, map){  map.setView([47.975,-122.196],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-glass", title="Tacoma",
+    onClick=JS("function(btn, map){  map.setView([47.252,-122.442],10.5); }"))) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Region",
+    onClick=JS("function(btn, map){  map.setView([47.615,-122.257],8.5); }")))
+
+working_map <- working_map %>%
+  addLegend("bottomright", pal=pal, values = boardings_to_map$boardings,
+            title = "Daily Boardings",
+            opacity = 1)
 
 ```
 
-`r paste(out, collapse="\n")`
+```{r plot_boardings, echo = FALSE}
+working_map
+```
 
 # Roadway Congestion {.tabset .tabset.fade .tabset-pills}
 Roadway congestion is defined by comparing the operating speed on a roadway facility for a specific time period to the posted speed limit. Moderate congestion levels are defined as places where the ratio of the oeprating speed to the posted speed is 50%-70%. Heavy Congestion is defined as locations where the ratio of the operating speed to the posted speed is 25%-50% and Severe congestion is defined as anything less than 25% of the posted speed limit.  
@@ -1570,7 +1654,7 @@ art_links <- c(5,7)
 source_python("soundcast-network.py")
 
 # AM Peak Hour
-create_network_shapefiles(soundcast_folder,output_folder,'7to8')
+create_network_shapefiles(roadway_folder,output_folder,'7to8')
 am_freeway <- create_congestion_map('7to8',c(1,3))
 am_arterials <- create_congestion_map('7to8',c(5,7))
 
@@ -1602,7 +1686,7 @@ am_art_sev_shr <- am_art_sev_lm / am_fwy_tot_lm
 am_art_cong <- am_art_mod_shr + am_art_hvy_shr + am_art_sev_shr
 
 #PM Peak Hour
-create_network_shapefiles(soundcast_folder,output_folder,'17to18')
+create_network_shapefiles(roadway_folder,output_folder,'17to18')
 pm_freeway <- create_congestion_map('17to18',c(1,3))
 pm_arterials <- create_congestion_map('17to18',c(5,7))
 
